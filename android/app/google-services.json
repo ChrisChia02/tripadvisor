@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "961638681385",
+    "project_id": "tripadvisorfyp",
+    "storage_bucket": "tripadvisorfyp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:961638681385:android:a10dcd12f9941321778538",
+        "android_client_info": {
+          "package_name": "com.example.tripadvisor"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB6ryhgmCP-BI7pPKhy3re9GOl6XPX10dE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
