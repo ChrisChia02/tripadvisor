@@ -1,10 +1,12 @@
 buildscript {
     repositories {
-        google() // ✅ Add this
-        mavenCentral() // ✅ Add this
+        google() // 
+        mavenCentral() // 
     }
     dependencies {
-        classpath("com.google.gms:google-services:4.3.10") // ✅ Fix dependency syntax
+        classpath("com.android.tools.build:gradle:8.1.2") // Use the latest version
+        classpath("com.google.gms:google-services:4.3.15") // Updated version
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.10") // Use the latest version 
     }
 }
 

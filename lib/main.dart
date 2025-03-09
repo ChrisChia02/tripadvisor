@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,7 +20,17 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class LoginPage extends StatelessWidget {
+class LoginPage extends StatefulWidget {
+  @override
+  _LoginPageState createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  bool _isLoading = false;
+
   void showToast(String message) {
     Fluttertoast.showToast(
       msg: message,
@@ -29,6 +40,28 @@ class LoginPage extends StatelessWidget {
       textColor: Colors.white,
       fontSize: 16.0,
     );
+  }
+
+  Future<void> _login() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await _auth.signInWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+
+      showToast("Login successful!");
+      Navigator.pushReplacementNamed(context, "/home"); // Change to your home page
+    } catch (e) {
+      showToast("Error: ${e.toString()}");
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   @override
@@ -42,10 +75,7 @@ class LoginPage extends StatelessWidget {
           TextButton(
             onPressed: () {
               showToast("Continuing as Guest...");
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => LocationPermissionPage()),
-              );
+              Navigator.pushReplacementNamed(context, "/locationPermission");
             },
             child: Text(
               "Skip",
@@ -64,11 +94,14 @@ class LoginPage extends StatelessWidget {
               SizedBox(height: 30),
 
               TextField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
                 decoration: InputDecoration(labelText: "Email", border: OutlineInputBorder()),
               ),
               SizedBox(height: 15),
 
               TextField(
+                controller: _passwordController,
                 obscureText: true,
                 decoration: InputDecoration(labelText: "Password", border: OutlineInputBorder()),
               ),
@@ -76,7 +109,7 @@ class LoginPage extends StatelessWidget {
 
               GestureDetector(
                 onTap: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => ForgotPasswordPage()));
+                  Navigator.pushNamed(context, "/forgotPassword");
                 },
                 child: Align(
                   alignment: Alignment.centerRight,
@@ -87,19 +120,21 @@ class LoginPage extends StatelessWidget {
 
               GestureDetector(
                 onTap: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => RegisterPage()));
+                  Navigator.pushNamed(context, "/register");
                 },
                 child: Text("Not having an account yet? Register here", style: TextStyle(color: Colors.blue, fontSize: 14)),
               ),
               SizedBox(height: 30),
 
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Color(0xFF5856D6), minimumSize: Size(double.infinity, 50)),
-                onPressed: () {
-                  showToast("Login successful!");
-                  Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => LocationPermissionPage()));
-                },
-                child: Text("Login", style: TextStyle(fontSize: 18, color: Colors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Color(0xFF5856D6),
+                  minimumSize: Size(double.infinity, 50),
+                ),
+                onPressed: _isLoading ? null : _login,
+                child: _isLoading
+                    ? CircularProgressIndicator(color: Colors.white)
+                    : Text("Login", style: TextStyle(fontSize: 18, color: Colors.white)),
               ),
               SizedBox(height: 20),
 

@@ -12,7 +12,20 @@
           "package_name": "com.example.tripadvisor"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "961638681385-b3t6ui6gdeb0bf0mephjsiladmvl2clm.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.tripadvisor",
+            "certificate_hash": "57778d2d3c933cf164b66ec561946e69f8d5d7ba"
+          }
+        },
+        {
+          "client_id": "961638681385-oauo2q8bj25u48sb2eat5kg52g1u5hll.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyB6ryhgmCP-BI7pPKhy3re9GOl6XPX10dE"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "961638681385-oauo2q8bj25u48sb2eat5kg52g1u5hll.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
