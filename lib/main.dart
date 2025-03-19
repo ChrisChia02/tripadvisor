@@ -4,8 +4,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'dart:convert'; // For JSON encoding/decoding
-import 'package:http/http.dart' as http; // For HTTP requests
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'dart:math';
 import 'package:image_picker/image_picker.dart';
@@ -276,7 +276,6 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
-// Register Page with Toast
 class RegisterPage extends StatefulWidget {
   @override
   _RegisterPageState createState() => _RegisterPageState();
@@ -3315,7 +3314,6 @@ class DestinationService {
   }
 }
 
-// Add this class to help with place details
 class PlaceDetails {
   final String placeId;
   final String name;
