@@ -8,19 +8,24 @@ const app = express();
 const PORT = 3000;
 
 const pool = new Pool({
-  connectionString: process.env.postgresql://admin:cVAvpCgiFmd6jaqCKFbq4K47ScgG6QPX@dpg-cvi6l4popnds73fqnkr0-a/trip_advisor_db, // Render's PostgreSQL URL
-  ssl: {
-    rejectUnauthorized: false, // Required for Render's managed PostgreSQL
-  },
+  user: process.env.DB_USER || "tripadmin",  // Change to your actual username
+  host: process.env.DB_HOST || "localhost",
+  database: process.env.DB_NAME || "trip_advisor_db",
+  password: String(process.env.DB_PASSWORD || "Admin123"),  // 🔹 Convert password to string
+  port: process.env.DB_PORT || 5432,
+  ssl: false,  // 🔹 Ensure SSL is disabled if not supported
 });
 
-pool.connect((err) => {
+pool.connect((err, client, release) => {
   if (err) {
     console.error("❌ Database connection failed:", err);
   } else {
-    console.log("✅ Connected to PostgreSQL Database on Render!");
+    console.log("✅ Connected to PostgreSQL Database");
+    release();
   }
 });
+
+module.exports = pool;
 
 // Middleware to parse JSON
 app.use(express.json());
