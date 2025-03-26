@@ -4,8 +4,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'dart:convert'; 
+import 'package:http/http.dart' as http; 
 import 'dart:io';
 import 'dart:math';
 import 'package:image_picker/image_picker.dart';
@@ -66,8 +66,10 @@ void main() async {
     routes: {
       "/login": (context) => LoginPage(),
       "/locationPermission": (context) => LocationPermissionPage(),
+      "/notificationPermission": (context) => NotificationPermissionPage(),
       "/register": (context) => RegisterPage(), 
       "/forgotPassword": (context) => ForgotPasswordPage(),
+      "/home": (context) => HomePage(),
     },
   ));
 }
@@ -610,7 +612,7 @@ class LocationPermissionPage extends StatelessWidget {
               SizedBox(height: 15),
               GestureDetector(
                 onTap: () {
-                  Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => NotificationPermissionPage()));
+                  Navigator.pushReplacementNamed(context, "/notificationPermission");
                 },
                 child: Text(
                   "Not Now",
@@ -632,7 +634,7 @@ class NotificationPermissionPage extends StatelessWidget {
     if (status.isGranted) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => HomePage()),
+        MaterialPageRoute(builder: (context) => HomeScreen()),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -670,7 +672,7 @@ class NotificationPermissionPage extends StatelessWidget {
               SizedBox(height: 15),
               GestureDetector(
                 onTap: () {
-                  Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomePage()));
+                  Navigator.pushReplacementNamed(context, "/home");
                 },
                 child: Text(
                   "Not Now",
@@ -727,14 +729,50 @@ void initState() {
   }
 
   // Function to fetch user ID from Firebase Auth
-  void _fetchUserId() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
+  void _fetchUserId({bool isGuest = false}) async {
+  try {
+    if (isGuest) {
       setState(() {
-        userId = user.uid; // Get Firebase Auth user ID
+        userId = "guest_${DateTime.now().millisecondsSinceEpoch}"; // Generate temporary guest ID
+        print("🛠️ Guest session started: $userId");
+      });
+    } else {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        setState(() {
+          userId = user.uid;
+          print("✅ User logged in: $userId");
+        });
+      } else {
+        throw Exception("⚠️ No user found");
+      }
+    }
+  } catch (e) {
+    print("❗ Error fetching user: $e");
+
+    Future.microtask(() {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Continue as guest")),
+      );
+
+      // Fallback to guest if user fails to load
+      _fetchUserId(isGuest: true);
+    });
+  }
+
+  // Timeout safeguard
+  Future.delayed(Duration(seconds: 5), () {
+    if (mounted && userId == null) {
+      print("⏳ Still loading... falling back to guest mode");
+      Future.microtask(() {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Taking too long. Starting guest mode.")),
+        );
+        _fetchUserId(isGuest: true);
       });
     }
-  }
+  });
+}
 
   final List<String> _pageTitles = ["Home", "Plan", "Trip", "Account"];
 
@@ -3595,7 +3633,7 @@ class _ProfilePageState extends State<ProfilePage> {
       };
     }
 
-    final response = await http.get(Uri.parse("http://192.168.0.7:3000/user/$userId"));
+    final response = await http.get(Uri.parse("http://192.168.0.15:3000/user/$userId"));
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
@@ -3671,7 +3709,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
       final userData = snapshot.data!;
       String profileImageUrl = userData["profile_picture"] != null
-          ? "http://192.168.0.7.113:3000${userData["profile_picture"]}"
+          ? "http://192.168.0.15.113:3000${userData["profile_picture"]}"
           : "assets/profile_placeholder.png";
 
       return Column(
@@ -3758,7 +3796,7 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
   }
 
   Future<Map<String, dynamic>> fetchUserData(String userId) async {
-    final response = await http.get(Uri.parse("http://192.168.0.7:3000/user/$userId"));
+    final response = await http.get(Uri.parse("http://192.168.0.15:3000/user/$userId"));
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
@@ -3794,7 +3832,7 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
 
                 final userData = snapshot.data!;
                 String profileImageUrl = userData["profile_picture"] != null
-                    ? "http://192.168.0.7:3000${userData["profile_picture"]}"
+                    ? "http://192.168.0.15:3000${userData["profile_picture"]}"
                     : "assets/profile_placeholder.png";
 
                 return SingleChildScrollView(
