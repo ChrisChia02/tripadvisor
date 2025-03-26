@@ -13,8 +13,8 @@ const pool = new Pool({
   database: process.env.DB_NAME || "trip_advisor_db",
   password: String(process.env.DB_PASSWORD || "Admin123"),  // 🔹 Convert password to string
   port: process.env.DB_PORT || 5432,
-  connectionString: process.env.DATABASE_URL || "postgresql://admin:cVAvpCgiFmd6jaqCKFbq4K47ScgG6QPX@dpg-cvi6l4popnds73fqnkr0-a/trip_advisor_db",
-  ssl: false,  // 🔹 Ensure SSL is disabled if not supported
+  connectionString: process.env.DATABASE_URL || "postgresql://admin:cVAvpCgiFmd6jaqCKFbq4K47ScgG6QPX@dpg-cvi6l4popnds73fqnkr0-a.singapore-postgres.render.com/trip_advisor_db",
+  ssl: true,  // 🔹 Ensure SSL is disabled if not supported
 });
 
 pool.connect((err, client, release) => {
