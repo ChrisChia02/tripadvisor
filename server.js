@@ -7,17 +7,17 @@ const path = require("path");
 const app = express();
 const PORT = 3000;
 
-//const pool = new Pool({
-  //user: process.env.DB_USER || "tripadmin",  // Change to your actual username
-  //host: process.env.DB_HOST,
-  //database: process.env.DB_NAME || "trip_advisor_db",
-  //password: String(process.env.DB_PASSWORD || "Admin123"),  // 🔹 Convert password to string
-  //port: process.env.DB_PORT || 5432,
-  //connectionString: process.env.DATABASE_URL || "postgresql://admin:cVAvpCgiFmd6jaqCKFbq4K47ScgG6QPX@dpg-cvi6l4popnds73fqnkr0-a.singapore-postgres.render.com/trip_advisor_db",
-  //ssl: {
-        //rejectUnauthorized: false,  // ✅ Required for Render PostgreSQL
-    //}
-//});
+const pool = new Pool({
+  user: process.env.DB_USER || "tripadmin",  // Change to your actual username
+  host: process.env.DB_HOST,
+  database: process.env.DB_NAME || "trip_advisor_db",
+  password: String(process.env.DB_PASSWORD || "Admin123"),  // 🔹 Convert password to string
+  port: process.env.DB_PORT || 5432,
+  connectionString: process.env.DATABASE_URL || "postgresql://admin:cVAvpCgiFmd6jaqCKFbq4K47ScgG6QPX@dpg-cvi6l4popnds73fqnkr0-a.singapore-postgres.render.com/trip_advisor_db",
+  ssl: {
+        rejectUnauthorized: false,  // ✅ Required for Render PostgreSQL
+    }
+});
 
 pool.connect((err, client, release) => {
   if (err) {
@@ -46,13 +46,13 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // ✅ Connect to PostgreSQL
-const db = new Pool({
-    user: "tripadmin",        // Your PostgreSQL username
-    host: "localhost",        // Change to your cloud host if using Render
-    database: "trip_advisor_db", // Your database name
-    password: "Admin123", // Your PostgreSQL password
-    port: 5432,              // Default PostgreSQL port
-});
+//const db = new Pool({
+    //user: "tripadmin",        // Your PostgreSQL username
+    //host: "localhost",        // Change to your cloud host if using Render
+    //database: "trip_advisor_db", // Your database name
+    //password: "Admin123", // Your PostgreSQL password
+    //port: 5432,              // Default PostgreSQL port
+//});
 
 db.connect()
     .then(() => console.log("✅ Connected to PostgreSQL Database"))
