@@ -3,6 +3,7 @@ const { Pool } = require("pg");
 require("dotenv").config();
 const multer = require("multer");
 const path = require("path");
+const paypal = require("paypal-rest-sdk");
 
 const app = express();
 const PORT = 3000;
@@ -115,4 +116,71 @@ app.post("/uploadProfilePic/:id", upload.single("profilePic"), async (req, res) 
 // ✅ Start Server
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
+});
+
+// ✅ Configure PayPal
+paypal.configure({
+    mode: "sandbox", // "sandbox" or "live"
+    client_id: process.env.PAYPAL_CLIENT_ID || "Afdl9APk-_BzjeuuqnpRChOE1oOs06piZVeMtk_ZpVOc8vc8mbgQbIo65_odiCiD75EHXoxXNZXwo65A",
+    client_secret: process.env.PAYPAL_CLIENT_SECRET || "ENGYjrtpbKfP9U0a3QVrtKjKP8NWSn06rz5mkyeAPlWSkDJNsK7uK2e4NoIHUeD4gPmM2drc8itH9Itm"
+});
+
+// ✅ Route to Create Payment
+app.post("/pay", (req, res) => {
+    const { amount } = req.body; // Amount from request
+
+    const paymentJson = {
+        intent: "sale",
+        payer: {
+            payment_method: "paypal"
+        },
+        redirect_urls: {
+            return_url: "http://localhost:3000/success",
+            cancel_url: "http://localhost:3000/cancel"
+        },
+        transactions: [{
+            amount: {
+                currency: "MYR",
+                total: 99.00
+            },
+            description: "Trip Advisor Booking"
+        }]
+    };
+
+    paypal.payment.create(paymentJson, (error, payment) => {
+        if (error) {
+            console.error(error);
+            res.status(500).json({ error: "Payment failed", details: error });
+        } else {
+            for (let link of payment.links) {
+                if (link.rel === "approval_url") {
+                    return res.json({ approval_url: link.href });
+                }
+            }
+        }
+    });
+});
+
+// ✅ Payment Success Endpoint
+app.get("/success", (req, res) => {
+    const payerId = req.query.PayerID;
+    const paymentId = req.query.paymentId;
+
+    const executePaymentJson = {
+        payer_id: payerId
+    };
+
+    paypal.payment.execute(paymentId, executePaymentJson, (error, payment) => {
+        if (error) {
+            console.error(error.response);
+            return res.status(500).json({ error: "Payment execution failed" });
+        } else {
+            return res.json({ message: "Payment successful!", payment });
+        }
+    });
+});
+
+// ✅ Payment Cancel Endpoint
+app.get("/cancel", (req, res) => {
+    res.json({ message: "Payment cancelled" });
 });
