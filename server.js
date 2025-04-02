@@ -54,9 +54,9 @@ const upload = multer({ storage });
     //port: 5432,              // Default PostgreSQL port
 //});
 
-db.connect()
-    .then(() => console.log("✅ Connected to PostgreSQL Database"))
-    .catch(err => console.error("❌ Database connection error:", err));
+//db.connect()
+    //.then(() => console.log("✅ Connected to PostgreSQL Database"))
+    //.catch(err => console.error("❌ Database connection error:", err));
 
 // ✅ API to Register a New User
 app.post("/register", async (req, res) => {
