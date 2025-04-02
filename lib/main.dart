@@ -10,6 +10,7 @@ import 'dart:io';
 import 'dart:math';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'dart:async';
 
 class Destination {
   final String name;
@@ -3370,54 +3371,138 @@ class PlaceDetails {
   });
 }
 
-class HomeContent extends StatelessWidget {
+class HomeContent extends StatefulWidget {
   final List<Destination> recentSearches;
-  
+  final List<Destination> recommendedPlaces;
+
   const HomeContent({
     Key? key,
     this.recentSearches = const [],
+    this.recommendedPlaces = const [],
   }) : super(key: key);
-  
+
+  @override
+  _HomeContentState createState() => _HomeContentState();
+}
+
+class _HomeContentState extends State<HomeContent> {
+  late Timer _timer;
+  int _currentImageIndex = 0;
+  final List<String> _recommendedImages = [
+    'assets/images/central_park.jpg',
+    'assets/images/eiffel_tower.jpg',
+    // Add more image paths as needed
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _startImageRotation();
+  }
+
+  void _startImageRotation() {
+    _timer = Timer.periodic(const Duration(minutes: 1), (timer) {
+      setState(() {
+        _currentImageIndex = (_currentImageIndex + 1) % _recommendedImages.length;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Only show "Recently Viewed" section if there are items to display
-        if (recentSearches.isNotEmpty) ...[
-          Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Text("Recently Viewed", 
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-          ),
-          Container(
-            height: 150,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: recentSearches.length,
-              itemBuilder: (context, index) {
-                final destination = recentSearches[index];
-                return Container(
-                  width: 120,
-                  margin: EdgeInsets.only(left: 16, right: index == recentSearches.length - 1 ? 16 : 0),
-                  decoration: BoxDecoration(
-                    color: Colors.blueAccent,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Center(
-                    child: Text(
-                      // Use whatever property Destination has that represents its name
-                      // For example: destination.name, destination.title, etc.
-                      destination.toString(), // Replace with actual property
-                      style: TextStyle(color: Colors.white, fontSize: 18)
-                    ),
-                  ),
-                );
-              },
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Recently Viewed Section
+          if (widget.recentSearches.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(
+                "Recently Viewed",
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
             ),
-          ),
+            SizedBox(
+              height: 150,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: widget.recentSearches.length,
+                itemBuilder: (context, index) {
+                  final destination = widget.recentSearches[index];
+                  return _buildDestinationCard(destination);
+                },
+              ),
+            ),
+          ],
+          // Recommended Places Section
+          if (_recommendedImages.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(
+                "Recommended Places",
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+            ),
+            SizedBox(
+              height: 200, // Adjust the height as needed
+              child: PageView.builder(
+                itemCount: _recommendedImages.length,
+                controller: PageController(viewportFraction: 0.8),
+                itemBuilder: (context, index) {
+                  return _buildImageCard(_recommendedImages[index]);
+                },
+              ),
+            ),
+          ],
         ],
-      ],
+      ),
+    );
+  }
+
+  Widget _buildDestinationCard(Destination destination) {
+    return Container(
+      width: 120,
+      margin: const EdgeInsets.symmetric(horizontal: 8.0),
+      decoration: BoxDecoration(
+        color: Colors.blueAccent,
+        borderRadius: BorderRadius.circular(10),
+        image: destination.images.isNotEmpty
+            ? DecorationImage(
+                image: AssetImage(destination.images[0]),
+                fit: BoxFit.cover,
+              )
+            : null,
+      ),
+      child: Center(
+        child: Text(
+          destination.name,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImageCard(String imagePath) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Image.asset(
+          imagePath,
+          fit: BoxFit.cover,
+        ),
+      ),
     );
   }
 }

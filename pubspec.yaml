@@ -63,6 +63,8 @@ flutter:
 
   assets:
     - assets/google_icon.png
+    - assets/images/central_park.jpg
+    - assets/images/eiffel_tower.jpg
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.
