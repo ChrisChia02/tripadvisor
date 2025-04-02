@@ -11,6 +11,8 @@ import 'dart:math';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
+//import 'package:flutter_braintree/flutter_braintree.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class Destination {
   final String name;
@@ -354,7 +356,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
     // **STEP 4: Store user info in MySQL via Node.js**
     final response = await http.post(
-      Uri.parse("http://tripadvisor-hgg4.onrender.com/register"), // Change to your backend URL
+      Uri.parse("https://tripadvisor-hgg4.onrender.com/register"), // Change to your backend URL
       headers: {"Content-Type": "application/json"},
       body: jsonEncode({
         "firebaseUserId": firebaseUserId, // Store Firebase UID in MySQL
@@ -365,7 +367,7 @@ class _RegisterPageState extends State<RegisterPage> {
       }),
     );
 
-    if (response.statusCode == 200) {
+    if (response.statusCode == 200 || response.statusCode == 201) {
       showToast("Registration successful!");
       Navigator.pushReplacementNamed(context, "/login");
     } else {
@@ -2019,10 +2021,7 @@ class _HotelsPageState extends State<HotelsPage> {
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            _bookHotel(hotel);
-                          },
+                          onPressed: () => _startPayment(context), // Call payment function
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Color(0xFF628EFF),
                             foregroundColor: Colors.white,
@@ -2032,7 +2031,7 @@ class _HotelsPageState extends State<HotelsPage> {
                             ),
                           ),
                           child: Text(
-                            "Book Now",
+                            "Book Now (99 MYR)", // 🔹 Fixed amount displayed
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -2050,6 +2049,33 @@ class _HotelsPageState extends State<HotelsPage> {
       ),
     );
   }
+
+  Future<void> _startPayment(BuildContext context) async {
+  const double amount = 99.00; // 🔹 Fixed price in MYR
+
+  final response = await http.post(
+    Uri.parse("https://tripadvisor-hgg4.onrender.com/pay"), // Replace with your actual backend URL
+    headers: {"Content-Type": "application/json"},
+    body: jsonEncode({"amount": amount.toString()}),
+  );
+
+  if (response.statusCode == 200) {
+    final data = jsonDecode(response.body);
+    final approvalUrl = data["approval_url"];
+
+    if (await canLaunchUrl(Uri.parse(approvalUrl))) { // ✅ Corrected function
+      await launchUrl(Uri.parse(approvalUrl), mode: LaunchMode.externalApplication); // ✅ Opens in browser
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Could not launch PayPal")),
+      );
+    }
+  } else {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Payment failed: ${response.body}")),
+    );
+  }
+}
 
   Widget _buildBookingDetail(String label, String value) {
     return Padding(
@@ -3703,13 +3729,14 @@ class _ProfilePageState extends State<ProfilePage> {
     if (user != null) {
       _userData = fetchUserData(user.uid);
     } else {
-      isGuest = true;
+      isGuest = false;
       _userData = null;
     }
   }
 
   Future<Map<String, dynamic>> fetchUserData(String? userId) async {
   if (userId == null) {
+    isGuest = true;
     return {
       "username": "Guest",
       "gender": "N/A",
@@ -3720,7 +3747,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   try {
     final response = await http.get(Uri.parse("https://tripadvisor-hgg4.onrender.com/users/$userId"));
-    if (response.statusCode == 200) {
+    if (response.statusCode == 200 || response.statusCode == 201) {
       return jsonDecode(response.body);
     } else {
       print("Error: Failed to load user data (Status Code: ${response.statusCode})");
