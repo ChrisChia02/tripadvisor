@@ -79,7 +79,7 @@ app.post("/register", async (req, res) => {
 });
 
 app.get("/", (req, res) => {
-    res.redirect("/user/1"); // Redirects to user ID 1 (or any other valid ID)
+    res.redirect("/users/1"); // Redirects to user ID 1 (or any other valid ID)
 });
 
 // ✅ API to Upload user profile picture
