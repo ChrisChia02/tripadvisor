@@ -78,31 +78,8 @@ app.post("/register", async (req, res) => {
     }
 });
 
-// ✅ API to Get User Data
-app.get("/user/:id", async (req, res) => {
-    const userId = parseInt(req.params.id, 10); // Convert id to integer
-
-    if (isNaN(userId)) {
-        return res.status(400).json({ error: "Invalid user ID" });
-    }
-
-    try {
-        const result = await db.query("SELECT * FROM users WHERE id = $1", [userId]);
-
-        if (result.rows.length === 0) {
-            return res.json({
-                username: "Guest",
-                gender: "N/A",
-                phone: "N/A",
-                profile_picture: "/uploads/default_profile.png"
-            });
-        }
-
-        res.json(result.rows[0]);
-    } catch (err) {
-        console.error("❌ PostgreSQL Error:", err);
-        res.status(500).json({ error: "Database error", details: err.message });
-    }
+app.get("/", (req, res) => {
+    res.send("Welcome to the User API! Use /user/:id to get user details.");
 });
 
 // ✅ API to Upload user profile picture
