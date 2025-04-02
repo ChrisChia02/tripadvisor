@@ -78,8 +78,30 @@ app.post("/register", async (req, res) => {
     }
 });
 
-app.get("/", (req, res) => {
-    res.redirect("/users/1"); // Redirects to user ID 1 (or any other valid ID)
+app.get("/users/:id", async (req, res) => {
+    const userId = parseInt(req.params.id, 10); // Convert ID to an integer
+
+    if (isNaN(userId)) {
+        return res.status(400).json({ error: "Invalid user ID" });
+    }
+
+    try {
+        const result = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
+
+        if (result.rows.length === 0) {
+            return res.json({
+                username: "Guest",
+                gender: "N/A",
+                phone: "N/A",
+                profile_picture: "/uploads/default_profile.png"
+            });
+        }
+
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error("❌ PostgreSQL Error:", err);
+        res.status(500).json({ error: "Database error", details: err.message });
+    }
 });
 
 // ✅ API to Upload user profile picture
