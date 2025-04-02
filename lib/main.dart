@@ -354,7 +354,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
     // **STEP 4: Store user info in MySQL via Node.js**
     final response = await http.post(
-      Uri.parse("http://https://tripadvisor-hgg4.onrender.com/register"), // Change to your backend URL
+      Uri.parse("http://tripadvisor-hgg4.onrender.com/register"), // Change to your backend URL
       headers: {"Content-Type": "application/json"},
       body: jsonEncode({
         "firebaseUserId": firebaseUserId, // Store Firebase UID in MySQL
@@ -3719,7 +3719,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   try {
-    final response = await http.get(Uri.parse("https://https://tripadvisor-hgg4.onrender.com/users/$userId"));
+    final response = await http.get(Uri.parse("https://tripadvisor-hgg4.onrender.com/users/$userId"));
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
@@ -3897,7 +3897,7 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
   }
 
   Future<Map<String, dynamic>> fetchUserData(String userId) async {
-    final response = await http.get(Uri.parse("http://https://tripadvisor-hgg4.onrender.com/users/$userId"));
+    final response = await http.get(Uri.parse("http://tripadvisor-hgg4.onrender.com/users/$userId"));
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {

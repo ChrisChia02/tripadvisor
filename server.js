@@ -42,27 +42,31 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// ✅ Register a New User
+// ✅ Route to register user in PostgreSQL
 app.post("/register", async (req, res) => {
-  const { uid, email, username, gender, phone, profile_picture } = req.body;
+  const { firebaseUserId, email, username, gender, phone } = req.body;
 
   try {
     // Check if user already exists
-    const existingUser = await pool.query("SELECT * FROM users WHERE id = $1", [uid]);
+    const existingUser = await pool.query(
+      "SELECT * FROM users WHERE id = $1",
+      [firebaseUserId]
+    );
+
     if (existingUser.rows.length > 0) {
       return res.status(400).json({ error: "User already exists" });
     }
 
-    // Insert the new user into PostgreSQL
+    // Insert user into PostgreSQL
     const result = await pool.query(
-      "INSERT INTO users (id, email, username, gender, phone, profile_picture) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
-      [uid, email, username, gender, phone, profile_picture]
+      "INSERT INTO users (id, email, username, gender, phone) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+      [firebaseUserId, email, username, gender, phone]
     );
 
-    res.status(201).json(result.rows[0]);
+    res.status(201).json({ message: "User registered successfully", user: result.rows[0] });
   } catch (error) {
-    console.error("❌ Error inserting user into database:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+    console.error("❌ PostgreSQL Error:", error);
+    res.status(500).json({ error: "Database error" });
   }
 });
 
