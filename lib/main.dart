@@ -354,7 +354,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
     // **STEP 4: Store user info in MySQL via Node.js**
     final response = await http.post(
-      Uri.parse("http://192.168.0.10:3000/register"), // Change to your backend URL
+      Uri.parse("http://https://tripadvisor-hgg4.onrender.com/register"), // Change to your backend URL
       headers: {"Content-Type": "application/json"},
       body: jsonEncode({
         "firebaseUserId": firebaseUserId, // Store Firebase UID in MySQL
@@ -3709,7 +3709,21 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<Map<String, dynamic>> fetchUserData(String? userId) async {
-    if (userId == null) {
+  if (userId == null) {
+    return {
+      "username": "Guest",
+      "gender": "N/A",
+      "phone": "N/A",
+      "profile_picture": "assets/profile_placeholder.png"
+    };
+  }
+
+  try {
+    final response = await http.get(Uri.parse("https://https://tripadvisor-hgg4.onrender.com/users/$userId"));
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      print("Error: Failed to load user data (Status Code: ${response.statusCode})");
       return {
         "username": "Guest",
         "gender": "N/A",
@@ -3717,14 +3731,16 @@ class _ProfilePageState extends State<ProfilePage> {
         "profile_picture": "assets/profile_placeholder.png"
       };
     }
-
-    final response = await http.get(Uri.parse("http://192.168.0.15:3000/user/$userId"));
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception("Failed to load user data");
-    }
+  } catch (e) {
+    print("Exception: $e");
+    return {
+      "username": "Guest",
+      "gender": "N/A",
+      "phone": "N/A",
+      "profile_picture": "assets/profile_placeholder.png"
+    };
   }
+}
 
   Future<void> _pickImage() async {
   final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
@@ -3794,7 +3810,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
       final userData = snapshot.data!;
       String profileImageUrl = userData["profile_picture"] != null
-          ? "http://192.168.0.15.113:3000${userData["profile_picture"]}"
+          ? "https://tripadvisor-hgg4.onrender.com${userData["profile_picture"]}"
           : "assets/profile_placeholder.png";
 
       return Column(
@@ -3881,7 +3897,7 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
   }
 
   Future<Map<String, dynamic>> fetchUserData(String userId) async {
-    final response = await http.get(Uri.parse("http://192.168.0.15:3000/user/$userId"));
+    final response = await http.get(Uri.parse("http://https://tripadvisor-hgg4.onrender.com/users/$userId"));
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
@@ -3917,7 +3933,7 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
 
                 final userData = snapshot.data!;
                 String profileImageUrl = userData["profile_picture"] != null
-                    ? "http://192.168.0.15:3000${userData["profile_picture"]}"
+                    ? "https://tripadvisor-hgg4.onrender.com${userData["profile_picture"]}"
                     : "assets/profile_placeholder.png";
 
                 return SingleChildScrollView(

@@ -44,22 +44,25 @@ const upload = multer({ storage });
 
 // ✅ Register a New User
 app.post("/register", async (req, res) => {
-  const { id, email, username, gender, phone } = req.body;
-
-  if (!id || !email || !username || !gender || !phone) {
-    return res.status(400).json({ error: "Missing required fields" });
-  }
+  const { uid, email, username, gender, phone, profile_picture } = req.body;
 
   try {
+    // Check if user already exists
+    const existingUser = await pool.query("SELECT * FROM users WHERE id = $1", [uid]);
+    if (existingUser.rows.length > 0) {
+      return res.status(400).json({ error: "User already exists" });
+    }
+
+    // Insert the new user into PostgreSQL
     const result = await pool.query(
-      "INSERT INTO users (id, email, username, gender, phone) VALUES ($1, $2, $3, $4, $5) RETURNING id",
-      [id, email, username, gender, phone]
+      "INSERT INTO users (id, email, username, gender, phone, profile_picture) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
+      [uid, email, username, gender, phone, profile_picture]
     );
 
-    res.status(201).json({ message: "User registered successfully!", userId: result.rows[0].id });
-  } catch (err) {
-    console.error("❌ PostgreSQL Error:", err);
-    res.status(500).json({ error: "Database error", details: err.message });
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error("❌ Error inserting user into database:", error);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
