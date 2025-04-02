@@ -1,22 +1,23 @@
 const express = require("express");
 const { Pool } = require("pg");
-require("dotenv").config(); // Load environment variables
+require("dotenv").config();
 const multer = require("multer");
 const path = require("path");
 
 const app = express();
 const PORT = 3000;
 
+// ✅ PostgreSQL Database Connection
 const pool = new Pool({
-  user: process.env.DB_USER || "tripadmin",  // Change to your actual username
+  user: process.env.DB_USER || "tripadmin",
   host: process.env.DB_HOST,
   database: process.env.DB_NAME || "trip_advisor_db",
-  password: String(process.env.DB_PASSWORD || "Admin123"),  // 🔹 Convert password to string
+  password: String(process.env.DB_PASSWORD || "Admin123"),
   port: process.env.DB_PORT || 5432,
-  connectionString: process.env.DATABASE_URL || "postgresql://admin:cVAvpCgiFmd6jaqCKFbq4K47ScgG6QPX@dpg-cvi6l4popnds73fqnkr0-a.singapore-postgres.render.com/trip_advisor_db",
-  ssl: {
-        rejectUnauthorized: false,  // ✅ Required for Render PostgreSQL
-    }
+  connectionString:
+    process.env.DATABASE_URL ||
+    "postgresql://admin:cVAvpCgiFmd6jaqCKFbq4K47ScgG6QPX@dpg-cvi6l4popnds73fqnkr0-a.singapore-postgres.render.com/trip_advisor_db",
+  ssl: { rejectUnauthorized: false },
 });
 
 pool.connect((err, client, release) => {
@@ -28,101 +29,83 @@ pool.connect((err, client, release) => {
   }
 });
 
-module.exports = pool;
-
-// Middleware to parse JSON
+// ✅ Middleware
 app.use(express.json());
-app.use("/uploads", express.static("uploads")); // Serve uploaded images
+app.use("/uploads", express.static("uploads"));
 
-// ✅ Define `storage` for Multer
+// ✅ Multer Storage Setup
 const storage = multer.diskStorage({
-    destination: "./uploads/",
-    filename: (req, file, cb) => {
-        cb(null, "profile_" + Date.now() + path.extname(file.originalname));
-    }
+  destination: "./uploads/",
+  filename: (req, file, cb) => {
+    cb(null, "profile_" + Date.now() + path.extname(file.originalname));
+  },
 });
-
-// ✅ Define `upload` before using it
 const upload = multer({ storage });
 
-// ✅ Connect to PostgreSQL
-//const db = new Pool({
-    //user: "tripadmin",        // Your PostgreSQL username
-    //host: "localhost",        // Change to your cloud host if using Render
-    //database: "trip_advisor_db", // Your database name
-    //password: "Admin123", // Your PostgreSQL password
-    //port: 5432,              // Default PostgreSQL port
-//});
-
-//db.connect()
-    //.then(() => console.log("✅ Connected to PostgreSQL Database"))
-    //.catch(err => console.error("❌ Database connection error:", err));
-
-// ✅ API to Register a New User
+// ✅ Register a New User
 app.post("/register", async (req, res) => {
-    const { email, username, gender, phone } = req.body;
+  const { id, email, username, gender, phone } = req.body;
 
-    if (!email || !username || !gender || !phone) {
-        return res.status(400).json({ error: "Missing required fields" });
-    }
+  if (!id || !email || !username || !gender || !phone) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
 
-    try {
-        const result = await db.query(
-            "INSERT INTO users (email, username, gender, phone) VALUES ($1, $2, $3, $4) RETURNING id",
-            [email, username, gender, phone]
-        );
-        res.status(200).json({ message: "User registered successfully!", userId: result.rows[0].id });
-    } catch (err) {
-        console.error("❌ PostgreSQL Error:", err);
-        res.status(500).json({ error: "Database error", details: err.message });
-    }
+  try {
+    const result = await pool.query(
+      "INSERT INTO users (id, email, username, gender, phone) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+      [id, email, username, gender, phone]
+    );
+
+    res.status(201).json({ message: "User registered successfully!", userId: result.rows[0].id });
+  } catch (err) {
+    console.error("❌ PostgreSQL Error:", err);
+    res.status(500).json({ error: "Database error", details: err.message });
+  }
 });
 
+// ✅ Get User Information by ID
 app.get("/users/:id", async (req, res) => {
-    const userId = parseInt(req.params.id, 10); // Convert ID to an integer
+  const userId = req.params.id; // Keep as string (not `parseInt`)
 
-    if (isNaN(userId)) {
-        return res.status(400).json({ error: "Invalid user ID" });
+  try {
+    const result = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
+
+    if (result.rows.length === 0) {
+      return res.json({
+        username: "Guest",
+        gender: "N/A",
+        phone: "N/A",
+        profile_picture: "/uploads/default_profile.png",
+      });
     }
 
-    try {
-        const result = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
-
-        if (result.rows.length === 0) {
-            return res.json({
-                username: "Guest",
-                gender: "N/A",
-                phone: "N/A",
-                profile_picture: "/uploads/default_profile.png"
-            });
-        }
-
-        res.json(result.rows[0]);
-    } catch (err) {
-        console.error("❌ PostgreSQL Error:", err);
-        res.status(500).json({ error: "Database error", details: err.message });
-    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("❌ PostgreSQL Error:", err);
+    res.status(500).json({ error: "Database error", details: err.message });
+  }
 });
 
-// ✅ API to Upload user profile picture
+// ✅ Upload User Profile Picture
 app.post("/uploadProfilePic/:id", upload.single("profilePic"), async (req, res) => {
-    const userId = req.params.id;
-    if (!req.file) {
-        return res.status(400).json({ error: "No file uploaded" });
-    }
+  const userId = req.params.id;
 
-    const imageUrl = `/uploads/${req.file.filename}`;
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
 
-    try {
-        await db.query("UPDATE users SET profile_picture = $1 WHERE id = $2", [imageUrl, userId]);
-        res.json({ message: "Profile picture updated!", profile_picture: imageUrl });
-    } catch (err) {
-        console.error("❌ PostgreSQL Error:", err);
-        res.status(500).json({ error: "Database error", details: err.message });
-    }
+  const imageUrl = `/uploads/${req.file.filename}`;
+
+  try {
+    await pool.query("UPDATE users SET profile_picture = $1 WHERE id = $2", [imageUrl, userId]);
+    res.json({ message: "Profile picture updated!", profile_picture: imageUrl });
+  } catch (err) {
+    console.error("❌ PostgreSQL Error:", err);
+    res.status(500).json({ error: "Database error", details: err.message });
+  }
 });
 
-// ✅ Start the Server
+// ✅ Start Server
 app.listen(PORT, () => {
-    console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
