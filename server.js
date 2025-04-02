@@ -79,7 +79,7 @@ app.post("/register", async (req, res) => {
 });
 
 app.get("/", (req, res) => {
-    res.send("Welcome to the User API! Use /user/:id to get user details.");
+    res.redirect("/user/1"); // Redirects to user ID 1 (or any other valid ID)
 });
 
 // ✅ API to Upload user profile picture
