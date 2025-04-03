@@ -2031,7 +2031,7 @@ class _HotelsPageState extends State<HotelsPage> {
                             ),
                           ),
                           child: Text(
-                            "Book Now (RM 99)", // 🔹 Fixed amount displayed
+                            "Book Now (RM 198.00)", // 🔹 Fixed amount displayed
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
