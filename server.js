@@ -140,8 +140,8 @@ app.post("/pay", (req, res) => {
         },
         transactions: [{
             amount: {
-                currency: "MYR",
-                total: 198.00
+                currency: "USD",
+                total: 40.00
             },
             description: "Trip Advisor Booking"
         }]
