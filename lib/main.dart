@@ -2051,6 +2051,13 @@ class _HotelsPageState extends State<HotelsPage> {
   }
 
   Future<void> _startPayment(BuildContext context) async {
+  final user = FirebaseAuth.instance.currentUser; // Get logged-in user
+  if (user == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Please log in first")),
+    );
+    return;
+  }
   const double amount = 198.00;
 
   try {

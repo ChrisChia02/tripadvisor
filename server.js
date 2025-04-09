@@ -222,6 +222,7 @@ app.post("/pay", (req, res) => {
     },
     transactions: [{
       amount: {
+        custom: user_id,
         currency: "USD", // PayPal sandbox only accepts USD
         total: amount    // Use the amount from frontend
       },
@@ -246,32 +247,22 @@ app.post("/pay", (req, res) => {
 // ✅ Payment Success Endpoint
 app.get("/success", async (req, res) => {
   const { paymentId, PayerID } = req.query;
+  
+  // 1. Get the original payment to retrieve user_id
+  paypal.payment.get(paymentId, (err, payment) => {
+    const user_id = payment.transactions[0].custom; // Extract user_id
 
-  // 1. Execute PayPal payment
-  const executePayment = {
-    payer_id: PayerID,
-  };
-
-  try {
-    const payment = await new Promise((resolve, reject) => {
-      paypal.payment.execute(paymentId, executePayment, (error, payment) => {
-        if (error) reject(error);
-        else resolve(payment);
-      });
-    });
-
-    // 2. Record booking in database (your existing code)
-    await pool.query(
-      "INSERT INTO bookings (user_id, plan_id, paypal_transaction_id, amount) VALUES ($1, $2, $3, $4)",
-      ["user_001", "plan_123", paymentId, 99.00]
+    // 2. Now insert with the correct user_id
+    pool.query(
+      `INSERT INTO bookings (user_id, plan_id, paypal_transaction_id, amount)
+       VALUES ($1, $2, $3, $4)`,
+      [user_id, "plan_123", paymentId, 99.00],
+      (err, result) => {
+        if (err) console.error("Booking failed:", err);
+        else res.redirect("yourapp://success");
+      }
     );
-
-    // 3. Redirect to your app's confirmation screen
-    res.redirect("yourapp://payment-success?paymentId=" + paymentId); // Deep link
-  } catch (error) {
-    console.error("Payment execution failed:", error);
-    res.redirect("yourapp://payment-failed"); // Fallback deep link
-  }
+  });
 });
 
 // ✅ Payment Cancel Endpoint
