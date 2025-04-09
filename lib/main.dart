@@ -714,8 +714,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   bool _isSearchLoading = false;
   Destination? _searchResult;
   TabController? _tabController;
-  List<Destination> _recentSearches = [];
-  String? displayId;    
+  List<Destination> _recentSearches = [];  
 
   @override
 void initState() {
@@ -737,47 +736,24 @@ void initState() {
     if (isGuest) {
       setState(() {
         userId = "guest_${DateTime.now().millisecondsSinceEpoch}";
-        print("🛠️ Guest session: $userId");
       });
     } else {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        // ✅ Directly use Firebase UID (no extra sync needed)
-        setState(() {
-          userId = user.uid;
-          print("✅ User logged in: ${user.uid}");
-        });
-        
-        // Optional: Fetch user details if needed
-        final response = await http.get(
-          Uri.parse("https://tripadvisor-hgg4.onrender.com/users/${user.uid}"),
-        );
-        final userData = jsonDecode(response.body);
-        setState(() => displayId = userData.simple_id);
+        setState(() => userId = user.uid);
       } else {
         throw Exception("No authenticated user");
       }
     }
   } catch (e) {
-    print("Error: $e");
     _fallbackToGuest();
   }
-
-  // Keep your existing timeout logic
-  Future.delayed(Duration(seconds: 5), () {
-    if (mounted && userId == null) _fallbackToGuest(timeout: true);
-  });
 }
 
-void _fallbackToGuest({bool timeout = false}) {
+void _fallbackToGuest() {
   if (!mounted) return;
-  
   ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(timeout 
-        ? "Taking too long. Starting guest mode." 
-        : "Continue as guest"),
-    ),
+    SnackBar(content: Text("Falling back to guest mode")),
   );
   _fetchUserId(isGuest: true);
 }

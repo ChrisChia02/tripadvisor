@@ -33,9 +33,9 @@ app.post("/register", async (req, res) => {
   const { firebaseUserId, email, username, gender, phone } = req.body;
 
   try {
-    // Check if user exists (original code)
+    // Check if user already exists
     const existingUser = await pool.query(
-      "SELECT * FROM users WHERE id = $1", 
+      "SELECT * FROM users WHERE id = $1",
       [firebaseUserId]
     );
 
@@ -43,20 +43,18 @@ app.post("/register", async (req, res) => {
       return res.status(400).json({ error: "User already exists" });
     }
 
-    // Insert with simple_id (NEW)
+    // Original insert (no simple_id)
     const result = await pool.query(
-      `INSERT INTO users (id, email, username, gender, phone, simple_id)
-       VALUES ($1, $2, $3, $4, $5, 'user_' || LPAD(NEXTVAL('user_serial')::TEXT, 3, '0'))
-       RETURNING *`,
+      "INSERT INTO users (id, email, username, gender, phone) VALUES ($1, $2, $3, $4, $5) RETURNING *",
       [firebaseUserId, email, username, gender, phone]
     );
 
     res.status(201).json({ 
-      message: "User registered successfully",
-      user: result.rows[0] // Now includes simple_id
+      message: "User registered successfully", 
+      user: result.rows[0] 
     });
   } catch (error) {
-    console.error("PostgreSQL Error:", error);
+    console.error("❌ PostgreSQL Error:", error);
     res.status(500).json({ error: "Database error" });
   }
 });
@@ -64,18 +62,18 @@ app.post("/register", async (req, res) => {
 // ✅ Keep your original /users/:id endpoint
 app.get("/users/:id", async (req, res) => {
   const userId = req.params.id;
-  
+
   try {
     const result = await pool.query(
       "SELECT * FROM users WHERE id = $1", 
       [userId]
     );
-    
+
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "User not found" });
     }
-    
-    res.json(result.rows[0]); // Now includes simple_id
+
+    res.json(result.rows[0]); // Original response
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Database error" });
