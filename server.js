@@ -58,24 +58,28 @@ app.post("/register", async (req, res) => {
 
 // ✅ Get User Information by ID
 app.get("/users/:id", async (req, res) => {
-  const userId = req.params.id; // Keep as string (not `parseInt`)
+  const userId = req.params.id; // Now accepts Firebase UIDs like "ZA8DAU6YoTNx55sKykwgOBWKdzL2"
 
   try {
     const result = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
 
     if (result.rows.length === 0) {
-      return res.json({
-        username: "Guest",
-        gender: "N/A",
-        phone: "N/A",
-        profile_picture: "/uploads/default_profile.png",
-      });
-    }
+  await pool.query(
+    `INSERT INTO users (id, email, username, created_at) 
+     VALUES ($1, $2, $3, NOW()) 
+     ON CONFLICT (id) DO NOTHING`,
+    [userId, `${userId}@travelapp.com`, `user_${userId.slice(0, 6)}`]
+  );
+  return res.json({ 
+    status: "new_user",
+    username: `user_${userId.slice(0, 6)}`
+  });
+}
 
-    res.json(result.rows[0]);
+    res.json(result.rows[0]); // Return actual user data
   } catch (err) {
-    console.error("❌ PostgreSQL Error:", err);
-    res.status(500).json({ error: "Database error", details: err.message });
+    console.error(err);
+    res.status(500).json({ error: "Database error" });
   }
 });
 

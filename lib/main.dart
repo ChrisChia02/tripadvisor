@@ -732,49 +732,48 @@ void initState() {
   }
 
   // Function to fetch user ID from Firebase Auth
-  void _fetchUserId({bool isGuest = false}) async {
+  void _fetchUserId() async {
   try {
-    if (isGuest) {
+    final user = FirebaseAuth.instance.currentUser;
+    
+    if (user != null) {
+      // ✅ Always use Firebase UID for authenticated users
       setState(() {
-        userId = "guest_${DateTime.now().millisecondsSinceEpoch}"; // Generate temporary guest ID
-        print("🛠️ Guest session started: $userId");
+        userId = user.uid;
+        print("✅ User logged in: $userId");
       });
+      
+      // 🔄 Sync user to PostgreSQL backend
+      await _syncUserToBackend(user.uid, user.email);
     } else {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        setState(() {
-          userId = user.uid;
-          print("✅ User logged in: $userId");
-        });
-      } else {
-        throw Exception("⚠️ No user found");
-      }
+      // 🚫 No guest fallback for payment-related features
+      print("⚠️ No authenticated user");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Please sign in. ")),
+      );
     }
   } catch (e) {
     print("❗ Error fetching user: $e");
-
-    Future.microtask(() {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Continue as guest")),
-      );
-
-      // Fallback to guest if user fails to load
-      _fetchUserId(isGuest: true);
-    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Authentication error")),
+    );
   }
+}
 
-  // Timeout safeguard
-  Future.delayed(Duration(seconds: 5), () {
-    if (mounted && userId == null) {
-      print("⏳ Still loading... falling back to guest mode");
-      Future.microtask(() {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Taking too long. Starting guest mode.")),
-        );
-        _fetchUserId(isGuest: true);
-      });
-    }
-  });
+Future<void> _syncUserToBackend(String uid, String? email) async {
+  try {
+    await http.post(
+      Uri.parse("https://tripadvisor-hgg4.onrender.com/users"),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({
+        "id": uid,
+        "email": email ?? "$uid@no-email.com",
+      }),
+    );
+    print("🔄 User synced to backend");
+  } catch (e) {
+    print("❗ Sync failed: $e");
+  }
 }
 
   final List<String> _pageTitles = ["Home", "Plan", "Trip", "Account"];
