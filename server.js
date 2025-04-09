@@ -28,10 +28,75 @@ const upload = multer({
   })
 });
 
-// 1️⃣ ================== USERS ================== (your existing routes)
-app.post("/register", async (req, res) => { /* ... */ });
-app.get("/users/:id", async (req, res) => { /* ... */ });
-app.post("/uploadProfilePic/:id", upload.single("profilePic"), async (req, res) => { /* ... */ });
+// 1️⃣ ================== USERS ==================
+app.post("/register", async (req, res) => {
+  const { firebaseUserId, email, username, gender, phone } = req.body;
+
+  try {
+    // Check if user already exists
+    const existingUser = await pool.query(
+      "SELECT * FROM users WHERE id = $1",
+      [firebaseUserId]
+    );
+
+    if (existingUser.rows.length > 0) {
+      return res.status(400).json({ error: "User already exists" });
+    }
+
+    // Insert user into PostgreSQL
+    const result = await pool.query(
+      "INSERT INTO users (id, email, username, gender, phone) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+      [firebaseUserId, email, username, gender, phone]
+    );
+
+    res.status(201).json({ message: "User registered successfully", user: result.rows[0] });
+  } catch (error) {
+    console.error("❌ PostgreSQL Error:", error);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// ✅ Get User Information by ID
+app.get("/users/:id", async (req, res) => {
+  const userId = req.params.id; // Keep as string (not `parseInt`)
+
+  try {
+    const result = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
+
+    if (result.rows.length === 0) {
+      return res.json({
+        username: "Guest",
+        gender: "N/A",
+        phone: "N/A",
+        profile_picture: "/uploads/default_profile.png",
+      });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("❌ PostgreSQL Error:", err);
+    res.status(500).json({ error: "Database error", details: err.message });
+  }
+});
+
+// ✅ Upload User Profile Picture
+app.post("/uploadProfilePic/:id", upload.single("profilePic"), async (req, res) => {
+  const userId = req.params.id;
+
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
+
+  const imageUrl = `/uploads/${req.file.filename}`;
+
+  try {
+    await pool.query("UPDATE users SET profile_picture = $1 WHERE id = $2", [imageUrl, userId]);
+    res.json({ message: "Profile picture updated!", profile_picture: imageUrl });
+  } catch (err) {
+    console.error("❌ PostgreSQL Error:", err);
+    res.status(500).json({ error: "Database error", details: err.message });
+  }
+});
 
 // 2️⃣ ================== SAVED PLACES ==================
 // Save a place
@@ -118,36 +183,69 @@ app.post("/api/bookings", async (req, res) => {
 // 6️⃣ ================== PAYPAL ==================
 // Fixed PayPal config (use template literals)
 paypal.configure({
-  mode: "sandbox",
-  client_id: process.env.PAYPAL_CLIENT_ID,
-  client_secret: process.env.PAYPAL_CLIENT_SECRET
+    mode: "sandbox", // "sandbox" or "live"
+    client_id: process.env.PAYPAL_CLIENT_ID || "Afdl9APk-_BzjeuuqnpRChOE1oOs06piZVeMtk_ZpVOc8vc8mbgQbIo65_odiCiD75EHXoxXNZXwo65A",
+    client_secret: process.env.PAYPAL_CLIENT_SECRET || "ENGYjrtpbKfP9U0a3QVrtKjKP8NWSn06rz5mkyeAPlWSkDJNsK7uK2e4NoIHUeD4gPmM2drc8itH9Itm"
 });
 
-// Create payment (updated to use dynamic amount)
-app.post("/api/pay", (req, res) => {
-  const { amount } = req.body;
-  const paymentJson = {
-    intent: "sale",
-    payer: { payment_method: "paypal" },
-    redirect_urls: {
-      return_url: `http://${process.env.BASE_URL}/success`,
-      cancel_url: `http://${process.env.BASE_URL}/cancel`
-    },
-    transactions: [{
-      amount: { currency: "USD", total: amount },
-      description: "Trip Booking"
-    }]
-  };
+// ✅ Route to Create Payment
+app.post("/pay", (req, res) => {
+    const { amount } = req.body; // Amount from request
 
-  paypal.payment.create(paymentJson, (error, payment) => {
-    if (error) {
-      console.error(error);
-      res.status(500).json({ error: "Payment failed" });
-    } else {
-      const approvalUrl = payment.links.find(link => link.rel === "approval_url").href;
-      res.json({ approval_url: approvalUrl });
-    }
-  });
+    const paymentJson = {
+        intent: "sale",
+        payer: {
+            payment_method: "paypal"
+        },
+        redirect_urls: {
+            return_url: "http://${process.env.BASE_URL}/success",
+            cancel_url: "http://${process.env.BASE_URL}/cancel"
+        },
+        transactions: [{
+            amount: {
+                currency: "USD",
+                total: 40.00
+            },
+            description: "Trip Advisor Booking"
+        }]
+    };
+
+    paypal.payment.create(paymentJson, (error, payment) => {
+        if (error) {
+            console.error(error);
+            res.status(500).json({ error: "Payment failed", details: error });
+        } else {
+            for (let link of payment.links) {
+                if (link.rel === "approval_url") {
+                    return res.json({ approval_url: link.href });
+                }
+            }
+        }
+    });
+});
+
+// ✅ Payment Success Endpoint
+app.get("/success", (req, res) => {
+    const payerId = req.query.PayerID;
+    const paymentId = req.query.paymentId;
+
+    const executePaymentJson = {
+        payer_id: payerId
+    };
+
+    paypal.payment.execute(paymentId, executePaymentJson, (error, payment) => {
+        if (error) {
+            console.error(error.response);
+            return res.status(500).json({ error: "Payment execution failed" });
+        } else {
+            return res.json({ message: "Payment successful!", payment });
+        }
+    });
+});
+
+// ✅ Payment Cancel Endpoint
+app.get("/cancel", (req, res) => {
+    res.json({ message: "Payment cancelled" });
 });
 
 // 7️⃣ ================== SERVER START ==================
