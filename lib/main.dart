@@ -715,6 +715,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Destination? _searchResult;
   TabController? _tabController;
   List<Destination> _recentSearches = [];
+  String? displayId;    
 
   @override
 void initState() {
@@ -734,52 +735,38 @@ void initState() {
   void _fetchUserId({bool isGuest = false}) async {
   try {
     if (isGuest) {
-      final guestId = "guest_${DateTime.now().millisecondsSinceEpoch}";
       setState(() {
-        userId = guestId;
-        print("🛠️ Guest session started: $guestId");
+        userId = "guest_${DateTime.now().millisecondsSinceEpoch}";
+        print("🛠️ Guest session: $userId");
       });
     } else {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        // ✅ First ensure user exists in PostgreSQL
-        await _ensureBackendUser(user.uid, user.email);
-        
+        // ✅ Directly use Firebase UID (no extra sync needed)
         setState(() {
           userId = user.uid;
           print("✅ User logged in: ${user.uid}");
         });
+        
+        // Optional: Fetch user details if needed
+        final response = await http.get(
+          Uri.parse("https://tripadvisor-hgg4.onrender.com/users/${user.uid}"),
+        );
+        final userData = jsonDecode(response.body);
+        setState(() => displayId = userData.simple_id);
       } else {
         throw Exception("No authenticated user");
       }
     }
   } catch (e) {
-    print("Error fetching user: $e");
+    print("Error: $e");
     _fallbackToGuest();
   }
 
-  // Timeout safeguard
+  // Keep your existing timeout logic
   Future.delayed(Duration(seconds: 5), () {
-    if (mounted && userId == null) {
-      _fallbackToGuest(timeout: true);
-    }
+    if (mounted && userId == null) _fallbackToGuest(timeout: true);
   });
-}
-
-Future<void> _ensureBackendUser(String uid, String? email) async {
-  try {
-    final response = await http.post(
-      Uri.parse("https://tripadvisor-hgg4.onrender.com/ensure-user"),
-      body: jsonEncode({
-        "id": uid,
-        "email": email ?? "$uid@no-email.com"
-      }),
-    );
-    if (response.statusCode != 200) throw Exception("Backend sync failed");
-  } catch (e) {
-    print("User sync error: $e");
-    throw Exception("Account synchronization failed");
-  }
 }
 
 void _fallbackToGuest({bool timeout = false}) {

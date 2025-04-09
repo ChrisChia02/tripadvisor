@@ -28,42 +28,14 @@ const upload = multer({
   })
 });
 
-// Add this after your other middleware
-app.use(async (req, res, next) => {
-  const firebaseUid = req.headers['x-firebase-uid']; // Send from Flutter
-  
-  if (firebaseUid) {
-    try {
-      // Get or create a simple UID
-      const mapping = await pool.query(`
-        INSERT INTO user_mappings (firebase_uid, simple_uid)
-        VALUES ($1, 'user_' || LPAD(
-          (SELECT COALESCE(MAX(SUBSTRING(simple_uid FROM 6)::INT), 0) + 1 
-          FROM user_mappings
-        )::TEXT, 3, '0'))
-        ON CONFLICT (firebase_uid) DO UPDATE
-        SET simple_uid = EXCLUDED.simple_uid
-        RETURNING simple_uid`,
-        [firebaseUid]
-      );
-      
-      req.mappedUserId = mapping.rows[0].simple_uid;
-    } catch (err) {
-      console.error("Mapping error:", err);
-      return res.status(500).json({ error: "User mapping failed" });
-    }
-  }
-  next();
-});
-
 // 1️⃣ ================== USERS ==================
 app.post("/register", async (req, res) => {
   const { firebaseUserId, email, username, gender, phone } = req.body;
 
   try {
-    // Check if user already exists
+    // Check if user exists (original code)
     const existingUser = await pool.query(
-      "SELECT * FROM users WHERE id = $1",
+      "SELECT * FROM users WHERE id = $1", 
       [firebaseUserId]
     );
 
@@ -71,57 +43,39 @@ app.post("/register", async (req, res) => {
       return res.status(400).json({ error: "User already exists" });
     }
 
-    // Insert user into PostgreSQL
+    // Insert with simple_id (NEW)
     const result = await pool.query(
-      "INSERT INTO users (id, email, username, gender, phone) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+      `INSERT INTO users (id, email, username, gender, phone, simple_id)
+       VALUES ($1, $2, $3, $4, $5, 'user_' || LPAD(NEXTVAL('user_serial')::TEXT, 3, '0'))
+       RETURNING *`,
       [firebaseUserId, email, username, gender, phone]
     );
 
-    res.status(201).json({ message: "User registered successfully", user: result.rows[0] });
+    res.status(201).json({ 
+      message: "User registered successfully",
+      user: result.rows[0] // Now includes simple_id
+    });
   } catch (error) {
-    console.error("❌ PostgreSQL Error:", error);
+    console.error("PostgreSQL Error:", error);
     res.status(500).json({ error: "Database error" });
   }
 });
 
-app.post("/ensure-user", async (req, res) => {
-  const { id, email } = req.body;
+// ✅ Keep your original /users/:id endpoint
+app.get("/users/:id", async (req, res) => {
+  const userId = req.params.id;
   
   try {
-    await pool.query(
-      `INSERT INTO users (id, email) 
-       VALUES ($1, $2) 
-       ON CONFLICT (id) DO UPDATE SET email = $2`,
-      [id, email]
+    const result = await pool.query(
+      "SELECT * FROM users WHERE id = $1", 
+      [userId]
     );
-    res.status(200).json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Database error" });
-  }
-});
-
-// ✅ Get User Information by ID
-app.get("/users/:id", async (req, res) => {
-  const userId = req.params.id; // Now accepts Firebase UIDs like "ZA8DAU6YoTNx55sKykwgOBWKdzL2"
-
-  try {
-    const result = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
-
+    
     if (result.rows.length === 0) {
-  await pool.query(
-    `INSERT INTO users (id, email, username, created_at) 
-     VALUES ($1, $2, $3, NOW()) 
-     ON CONFLICT (id) DO NOTHING`,
-    [userId, `${userId}@travelapp.com`, `user_${userId.slice(0, 6)}`]
-  );
-  return res.json({ 
-    status: "new_user",
-    username: `user_${userId.slice(0, 6)}`
-  });
-}
-
-    res.json(result.rows[0]); // Return actual user data
+      return res.status(404).json({ error: "User not found" });
+    }
+    
+    res.json(result.rows[0]); // Now includes simple_id
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Database error" });
