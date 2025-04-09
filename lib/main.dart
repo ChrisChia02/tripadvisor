@@ -2051,28 +2051,37 @@ class _HotelsPageState extends State<HotelsPage> {
   }
 
   Future<void> _startPayment(BuildContext context) async {
-  const double amount = 99.00; // 🔹 Fixed price in MYR
+  const double amount = 198.00;
 
-  final response = await http.post(
-    Uri.parse("https://tripadvisor-hgg4.onrender.com/pay"), // Replace with your actual backend URL
-    headers: {"Content-Type": "application/json"},
-    body: jsonEncode({"amount": amount.toString()}),
-  );
+  try {
+    final response = await http.post(
+      Uri.parse("https://tripadvisor-hgg4.onrender.com/pay"), // ✅ Replace with your actual URL
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"amount": amount}), // ✅ Send as number (not string)
+    );
 
-  if (response.statusCode == 200) {
-    final data = jsonDecode(response.body);
-    final approvalUrl = data["approval_url"];
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final approvalUrl = data["approval_url"];
 
-    if (await canLaunchUrl(Uri.parse(approvalUrl))) { // ✅ Corrected function
-      await launchUrl(Uri.parse(approvalUrl), mode: LaunchMode.externalApplication); // ✅ Opens in browser
+      if (await canLaunchUrl(Uri.parse(approvalUrl))) {
+        await launchUrl(
+          Uri.parse(approvalUrl),
+          mode: LaunchMode.externalApplication, // ✅ Force browser
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Could not open PayPal")),
+        );
+      }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Could not launch PayPal")),
+        SnackBar(content: Text("Backend error: ${response.body}")),
       );
     }
-  } else {
+  } catch (e) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Payment failed: ${response.body}")),
+      SnackBar(content: Text("Network error: ${e.toString()}")),
     );
   }
 }
@@ -3891,12 +3900,92 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
-class BookingsPage extends StatelessWidget {
+class BookingsPage extends StatefulWidget {
+  @override
+  _BookingsPageState createState() => _BookingsPageState();
+}
+
+class _BookingsPageState extends State<BookingsPage> {
+  List<dynamic> _bookings = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchBookings();
+  }
+
+  Future<void> _fetchBookings() async {
+    final userId = "user_001"; // Replace with actual user ID (from Firebase/auth)
+    final url = Uri.parse("https://tripadvisor-hgg4.onrender.com/api/bookings?user_id=$userId");
+
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        setState(() {
+          _bookings = jsonDecode(response.body);
+          _isLoading = false;
+        });
+      } else {
+        throw Exception("Failed to load bookings");
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: ${e.toString()}")),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Bookings"), centerTitle: true, backgroundColor: Color(0xFF628EFF), toolbarHeight: 80),
-      body: Center(child: Text("Bookings Page", style: TextStyle(fontSize: 20))),
+      appBar: AppBar(
+        title: Text("Bookings"),
+        centerTitle: true,
+        backgroundColor: Color(0xFF628EFF),
+        toolbarHeight: 80,
+      ),
+      body: _isLoading
+          ? Center(child: CircularProgressIndicator())
+          : _bookings.isEmpty
+              ? Center(child: Text("No bookings found", style: TextStyle(fontSize: 18)))
+              : ListView.builder(
+                  itemCount: _bookings.length,
+                  itemBuilder: (context, index) {
+                    final booking = _bookings[index];
+                    return BookingCard(booking: booking);
+                  },
+                ),
+    );
+  }
+}
+
+class BookingCard extends StatelessWidget {
+  final dynamic booking;
+
+  const BookingCard({Key? key, required this.booking}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              booking["plan_name"] ?? "Unnamed Plan",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 8),
+            Text("Amount: MYR ${booking["amount"]?.toStringAsFixed(2)}"),
+            Text("Status: ${booking["status"]}"),
+            Text("Date: ${booking["booked_at"]?.split('T')[0]}"),
+          ],
+        ),
+      ),
     );
   }
 }

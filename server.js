@@ -180,6 +180,27 @@ app.post("/api/bookings", async (req, res) => {
   }
 });
 
+app.get("/api/bookings", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT 
+        b.id, 
+        p.name AS plan_name, 
+        b.amount, 
+        b.status, 
+        b.booked_at
+       FROM bookings b
+       LEFT JOIN plans p ON b.plan_id = p.id
+       WHERE b.user_id = $1`,
+      [req.query.user_id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
 // 6️⃣ ================== PAYPAL ==================
 // Fixed PayPal config (use template literals)
 paypal.configure({
