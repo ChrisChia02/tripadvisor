@@ -28,6 +28,34 @@ const upload = multer({
   })
 });
 
+// Add this after your other middleware
+app.use(async (req, res, next) => {
+  const firebaseUid = req.headers['x-firebase-uid']; // Send from Flutter
+  
+  if (firebaseUid) {
+    try {
+      // Get or create a simple UID
+      const mapping = await pool.query(`
+        INSERT INTO user_mappings (firebase_uid, simple_uid)
+        VALUES ($1, 'user_' || LPAD(
+          (SELECT COALESCE(MAX(SUBSTRING(simple_uid FROM 6)::INT), 0) + 1 
+          FROM user_mappings
+        )::TEXT, 3, '0'))
+        ON CONFLICT (firebase_uid) DO UPDATE
+        SET simple_uid = EXCLUDED.simple_uid
+        RETURNING simple_uid`,
+        [firebaseUid]
+      );
+      
+      req.mappedUserId = mapping.rows[0].simple_uid;
+    } catch (err) {
+      console.error("Mapping error:", err);
+      return res.status(500).json({ error: "User mapping failed" });
+    }
+  }
+  next();
+});
+
 // 1️⃣ ================== USERS ==================
 app.post("/register", async (req, res) => {
   const { firebaseUserId, email, username, gender, phone } = req.body;
@@ -52,6 +80,23 @@ app.post("/register", async (req, res) => {
     res.status(201).json({ message: "User registered successfully", user: result.rows[0] });
   } catch (error) {
     console.error("❌ PostgreSQL Error:", error);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+app.post("/ensure-user", async (req, res) => {
+  const { id, email } = req.body;
+  
+  try {
+    await pool.query(
+      `INSERT INTO users (id, email) 
+       VALUES ($1, $2) 
+       ON CONFLICT (id) DO UPDATE SET email = $2`,
+      [id, email]
+    );
+    res.status(200).json({ success: true });
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Database error" });
   }
 });
@@ -170,12 +215,11 @@ app.post("/api/plans", async (req, res) => {
 // 5️⃣ ================== BOOKINGS ==================
 // Create booking after PayPal success
 app.post("/api/bookings", async (req, res) => {
-  const { user_id, plan_id, paypal_transaction_id, amount } = req.body;
   try {
     const result = await pool.query(
       `INSERT INTO bookings (user_id, plan_id, paypal_transaction_id, amount) 
        VALUES ($1, $2, $3, $4) RETURNING *`,
-      [user_id, plan_id, paypal_transaction_id, amount]
+      [req.mappedUserId, req.body.plan_id, req.body.paypal_transaction_id, req.body.amount]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -215,22 +259,22 @@ paypal.configure({
 
 // ✅ Route to Create Payment
 app.post("/pay", (req, res) => {
-  const { amount } = req.body; // Use dynamic amount from request
+  const { amount } = req.body;
 
   const paymentJson = {
     intent: "sale",
     payer: { payment_method: "paypal" },
     redirect_urls: {
-      return_url: `http://${req.headers.host}/success`, // Dynamic host
+      return_url: `http://${req.headers.host}/success?mappedUserId=${req.mappedUserId}`,
       cancel_url: `http://${req.headers.host}/cancel`
     },
     transactions: [{
       amount: {
-        custom: user_id,
-        currency: "USD", // PayPal sandbox only accepts USD
-        total: amount    // Use the amount from frontend
+        currency: "USD",
+        total: amount
       },
-      description: "Trip Booking"
+      description: "Trip Booking",
+      custom: req.mappedUserId // Store the mapped ID
     }]
   };
 

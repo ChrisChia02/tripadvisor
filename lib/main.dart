@@ -731,49 +731,68 @@ void initState() {
     super.dispose();
   }
 
-  // Function to fetch user ID from Firebase Auth
-  void _fetchUserId() async {
+  void _fetchUserId({bool isGuest = false}) async {
   try {
-    final user = FirebaseAuth.instance.currentUser;
-    
-    if (user != null) {
-      // ✅ Always use Firebase UID for authenticated users
+    if (isGuest) {
+      final guestId = "guest_${DateTime.now().millisecondsSinceEpoch}";
       setState(() {
-        userId = user.uid;
-        print("✅ User logged in: $userId");
+        userId = guestId;
+        print("🛠️ Guest session started: $guestId");
       });
-      
-      // 🔄 Sync user to PostgreSQL backend
-      await _syncUserToBackend(user.uid, user.email);
     } else {
-      // 🚫 No guest fallback for payment-related features
-      print("⚠️ No authenticated user");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Please sign in. ")),
-      );
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        // ✅ First ensure user exists in PostgreSQL
+        await _ensureBackendUser(user.uid, user.email);
+        
+        setState(() {
+          userId = user.uid;
+          print("✅ User logged in: ${user.uid}");
+        });
+      } else {
+        throw Exception("No authenticated user");
+      }
     }
   } catch (e) {
-    print("❗ Error fetching user: $e");
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Authentication error")),
+    print("Error fetching user: $e");
+    _fallbackToGuest();
+  }
+
+  // Timeout safeguard
+  Future.delayed(Duration(seconds: 5), () {
+    if (mounted && userId == null) {
+      _fallbackToGuest(timeout: true);
+    }
+  });
+}
+
+Future<void> _ensureBackendUser(String uid, String? email) async {
+  try {
+    final response = await http.post(
+      Uri.parse("https://tripadvisor-hgg4.onrender.com/ensure-user"),
+      body: jsonEncode({
+        "id": uid,
+        "email": email ?? "$uid@no-email.com"
+      }),
     );
+    if (response.statusCode != 200) throw Exception("Backend sync failed");
+  } catch (e) {
+    print("User sync error: $e");
+    throw Exception("Account synchronization failed");
   }
 }
 
-Future<void> _syncUserToBackend(String uid, String? email) async {
-  try {
-    await http.post(
-      Uri.parse("https://tripadvisor-hgg4.onrender.com/users"),
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode({
-        "id": uid,
-        "email": email ?? "$uid@no-email.com",
-      }),
-    );
-    print("🔄 User synced to backend");
-  } catch (e) {
-    print("❗ Sync failed: $e");
-  }
+void _fallbackToGuest({bool timeout = false}) {
+  if (!mounted) return;
+  
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(timeout 
+        ? "Taking too long. Starting guest mode." 
+        : "Continue as guest"),
+    ),
+  );
+  _fetchUserId(isGuest: true);
 }
 
   final List<String> _pageTitles = ["Home", "Plan", "Trip", "Account"];
