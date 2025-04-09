@@ -735,27 +735,45 @@ void initState() {
   try {
     if (isGuest) {
       setState(() {
-        userId = "guest_${DateTime.now().millisecondsSinceEpoch}";
+        userId = "guest_${DateTime.now().millisecondsSinceEpoch}"; // Generate temporary guest ID
+        print("🛠️ Guest session started: $userId");
       });
     } else {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        setState(() => userId = user.uid);
+        setState(() {
+          userId = user.uid;
+          print("✅ User logged in: $userId");
+        });
       } else {
-        throw Exception("No authenticated user");
+        throw Exception("⚠️ No user found");
       }
     }
   } catch (e) {
-    _fallbackToGuest();
-  }
-}
+    print("❗ Error fetching user: $e");
 
-void _fallbackToGuest() {
-  if (!mounted) return;
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text("Falling back to guest mode")),
-  );
-  _fetchUserId(isGuest: true);
+    Future.microtask(() {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Continue as guest")),
+      );
+
+      // Fallback to guest if user fails to load
+      _fetchUserId(isGuest: true);
+    });
+  }
+
+  // Timeout safeguard
+  Future.delayed(Duration(seconds: 5), () {
+    if (mounted && userId == null) {
+      print("⏳ Still loading... falling back to guest mode");
+      Future.microtask(() {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Taking too long. Starting guest mode.")),
+        );
+        _fetchUserId(isGuest: true);
+      });
+    }
+  });
 }
 
   final List<String> _pageTitles = ["Home", "Plan", "Trip", "Account"];

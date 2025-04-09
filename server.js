@@ -28,7 +28,8 @@ const upload = multer({
   })
 });
 
-// 1️⃣ ================== USERS ==================
+// 1️⃣ ================== USERS ================== 
+// ✅ Route to register user in PostgreSQL
 app.post("/register", async (req, res) => {
   const { firebaseUserId, email, username, gender, phone } = req.body;
 
@@ -43,40 +44,39 @@ app.post("/register", async (req, res) => {
       return res.status(400).json({ error: "User already exists" });
     }
 
-    // Original insert (no simple_id)
+    // Insert user into PostgreSQL
     const result = await pool.query(
       "INSERT INTO users (id, email, username, gender, phone) VALUES ($1, $2, $3, $4, $5) RETURNING *",
       [firebaseUserId, email, username, gender, phone]
     );
 
-    res.status(201).json({ 
-      message: "User registered successfully", 
-      user: result.rows[0] 
-    });
+    res.status(201).json({ message: "User registered successfully", user: result.rows[0] });
   } catch (error) {
     console.error("❌ PostgreSQL Error:", error);
     res.status(500).json({ error: "Database error" });
   }
 });
 
-// ✅ Keep your original /users/:id endpoint
+// ✅ Get User Information by ID
 app.get("/users/:id", async (req, res) => {
-  const userId = req.params.id;
+  const userId = req.params.id; // Keep as string (not `parseInt`)
 
   try {
-    const result = await pool.query(
-      "SELECT * FROM users WHERE id = $1", 
-      [userId]
-    );
+    const result = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: "User not found" });
+      return res.json({
+        username: "Guest",
+        gender: "N/A",
+        phone: "N/A",
+        profile_picture: "/uploads/default_profile.png",
+      });
     }
 
-    res.json(result.rows[0]); // Original response
+    res.json(result.rows[0]);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Database error" });
+    console.error("❌ PostgreSQL Error:", err);
+    res.status(500).json({ error: "Database error", details: err.message });
   }
 });
 
@@ -167,11 +167,12 @@ app.post("/api/plans", async (req, res) => {
 // 5️⃣ ================== BOOKINGS ==================
 // Create booking after PayPal success
 app.post("/api/bookings", async (req, res) => {
+  const { user_id, plan_id, paypal_transaction_id, amount } = req.body;
   try {
     const result = await pool.query(
       `INSERT INTO bookings (user_id, plan_id, paypal_transaction_id, amount) 
        VALUES ($1, $2, $3, $4) RETURNING *`,
-      [req.mappedUserId, req.body.plan_id, req.body.paypal_transaction_id, req.body.amount]
+      [user_id, plan_id, paypal_transaction_id, amount]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -204,29 +205,28 @@ app.get("/api/bookings", async (req, res) => {
 // 6️⃣ ================== PAYPAL ==================
 // Fixed PayPal config (use template literals)
 paypal.configure({
-    mode: "sandbox", // "sandbox" or "live"
-    client_id: process.env.PAYPAL_CLIENT_ID || "Afdl9APk-_BzjeuuqnpRChOE1oOs06piZVeMtk_ZpVOc8vc8mbgQbIo65_odiCiD75EHXoxXNZXwo65A",
-    client_secret: process.env.PAYPAL_CLIENT_SECRET || "ENGYjrtpbKfP9U0a3QVrtKjKP8NWSn06rz5mkyeAPlWSkDJNsK7uK2e4NoIHUeD4gPmM2drc8itH9Itm"
+  mode: "sandbox",
+  client_id: process.env.PAYPAL_CLIENT_ID,
+  client_secret: process.env.PAYPAL_CLIENT_SECRET
 });
 
-// ✅ Route to Create Payment
+// Create payment (updated to use dynamic amount)
 app.post("/pay", (req, res) => {
-  const { amount } = req.body;
+  const { amount } = req.body; // Use dynamic amount from request
 
   const paymentJson = {
     intent: "sale",
     payer: { payment_method: "paypal" },
     redirect_urls: {
-      return_url: `http://${req.headers.host}/success?mappedUserId=${req.mappedUserId}`,
+      return_url: `http://${req.headers.host}/success`, // Dynamic host
       cancel_url: `http://${req.headers.host}/cancel`
     },
     transactions: [{
       amount: {
-        currency: "USD",
-        total: amount
+        currency: "USD", // PayPal sandbox only accepts USD
+        total: amount    // Use the amount from frontend
       },
-      description: "Trip Booking",
-      custom: req.mappedUserId // Store the mapped ID
+      description: "Trip Booking"
     }]
   };
 
@@ -244,30 +244,41 @@ app.post("/pay", (req, res) => {
   });
 });
 
-// ✅ Payment Success Endpoint
 app.get("/success", async (req, res) => {
   const { paymentId, PayerID } = req.query;
-  
-  // 1. Get the original payment to retrieve user_id
-  paypal.payment.get(paymentId, (err, payment) => {
-    const user_id = payment.transactions[0].custom; // Extract user_id
+  const userId = "user_001"; // Replace with actual user ID (from session/JWT)
 
-    // 2. Now insert with the correct user_id
-    pool.query(
+  try {
+    // 1. Check if user exists
+    const userCheck = await pool.query(
+      "SELECT id FROM users WHERE id = $1", 
+      [userId]
+    );
+
+    if (userCheck.rows.length === 0) {
+      throw new Error(`User ${userId} not found`);
+    }
+
+    // 2. Proceed with PayPal execution and booking insertion
+    const payment = await new Promise((resolve, reject) => {
+      paypal.payment.execute(paymentId, { payer_id: PayerID }, (err, payment) => {
+        if (err) reject(err);
+        else resolve(payment);
+      });
+    });
+
+    // 3. Insert booking
+    await pool.query(
       `INSERT INTO bookings (user_id, plan_id, paypal_transaction_id, amount)
        VALUES ($1, $2, $3, $4)`,
-      [user_id, "plan_123", paymentId, 99.00],
-      (err, result) => {
-        if (err) console.error("Booking failed:", err);
-        else res.redirect("yourapp://success");
-      }
+      [userId, "plan_123", paymentId, 99.00] // Replace with dynamic values
     );
-  });
-});
 
-// ✅ Payment Cancel Endpoint
-app.get("/cancel", (req, res) => {
-    res.json({ message: "Payment cancelled" });
+    res.redirect("yourapp://payment-success");
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // 7️⃣ ================== SERVER START ==================
