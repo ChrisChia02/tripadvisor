@@ -244,22 +244,34 @@ app.post("/pay", (req, res) => {
 });
 
 // ✅ Payment Success Endpoint
-app.get("/success", (req, res) => {
-    const payerId = req.query.PayerID;
-    const paymentId = req.query.paymentId;
+app.get("/success", async (req, res) => {
+  const { paymentId, PayerID } = req.query;
 
-    const executePaymentJson = {
-        payer_id: payerId
-    };
+  // 1. Execute PayPal payment
+  const executePayment = {
+    payer_id: PayerID,
+  };
 
-    paypal.payment.execute(paymentId, executePaymentJson, (error, payment) => {
-        if (error) {
-            console.error(error.response);
-            return res.status(500).json({ error: "Payment execution failed" });
-        } else {
-            return res.json({ message: "Payment successful!", payment });
-        }
+  try {
+    const payment = await new Promise((resolve, reject) => {
+      paypal.payment.execute(paymentId, executePayment, (error, payment) => {
+        if (error) reject(error);
+        else resolve(payment);
+      });
     });
+
+    // 2. Record booking in database (your existing code)
+    await pool.query(
+      "INSERT INTO bookings (user_id, plan_id, paypal_transaction_id, amount) VALUES ($1, $2, $3, $4)",
+      ["user_001", "plan_123", paymentId, 99.00]
+    );
+
+    // 3. Redirect to your app's confirmation screen
+    res.redirect("yourapp://payment-success?paymentId=" + paymentId); // Deep link
+  } catch (error) {
+    console.error("Payment execution failed:", error);
+    res.redirect("yourapp://payment-failed"); // Fallback deep link
+  }
 });
 
 // ✅ Payment Cancel Endpoint
