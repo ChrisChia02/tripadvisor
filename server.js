@@ -29,46 +29,54 @@ const upload = multer({
 });
 
 // 1️⃣ ================== USERS ================== 
-// ✅ Route to register user in PostgreSQL
+// ✅ Register user (returns simple_id)
 app.post("/register", async (req, res) => {
-  const { firebaseUserId, email, username, gender, phone } = req.body;
+  const { firebaseUid, email } = req.body;
 
   try {
-    // Check if user already exists
+    // Check if user exists (by Firebase UID or email)
     const existingUser = await pool.query(
-      "SELECT * FROM users WHERE id = $1",
-      [firebaseUserId]
+      "SELECT simple_id FROM users WHERE id = $1 OR email = $2",
+      [firebaseUid, email]
     );
 
     if (existingUser.rows.length > 0) {
-      return res.status(400).json({ error: "User already exists" });
+      return res.status(400).json({ 
+        error: "User already exists",
+        simple_id: existingUser.rows[0].simple_id 
+      });
     }
 
-    // Insert user into PostgreSQL
+    // Insert new user
     const result = await pool.query(
-      "INSERT INTO users (id, email, username, gender, phone) VALUES ($1, $2, $3, $4, $5) RETURNING *",
-      [firebaseUserId, email, username, gender, phone]
+      `INSERT INTO users (id, simple_id, email)
+       VALUES ($1, 'user_' || LPAD(NEXTVAL('user_id_seq')::TEXT, 3, '0'), $2)
+       RETURNING simple_id`,
+      [firebaseUid, email]
     );
 
-    res.status(201).json({ message: "User registered successfully", user: result.rows[0] });
+    res.status(201).json({ 
+      message: "User registered successfully",
+      simple_id: result.rows[0].simple_id 
+    });
   } catch (error) {
     console.error("❌ PostgreSQL Error:", error);
     res.status(500).json({ error: "Database error" });
   }
 });
 
-// ✅ Get User Information by ID
-app.get("/users/:id", async (req, res) => {
+// ✅ Get User by simple_id
+app.get("/users/:simple_id", async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT 
-        id AS firebase_uid,
-        simple_id AS display_id, 
+        simple_id,
         email,
-        username
+        username,
+        profile_picture
        FROM users 
-       WHERE id = $1`,
-      [req.params.id]
+       WHERE simple_id = $1`,
+      [req.params.simple_id]
     );
 
     if (result.rows.length === 0) {
@@ -82,10 +90,8 @@ app.get("/users/:id", async (req, res) => {
   }
 });
 
-// ✅ Upload User Profile Picture
-app.post("/uploadProfilePic/:id", upload.single("profilePic"), async (req, res) => {
-  const userId = req.params.id;
-
+// ✅ Upload Profile Picture (using simple_id)
+app.post("/uploadProfilePic/:simple_id", upload.single("profilePic"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: "No file uploaded" });
   }
@@ -93,23 +99,30 @@ app.post("/uploadProfilePic/:id", upload.single("profilePic"), async (req, res) 
   const imageUrl = `/uploads/${req.file.filename}`;
 
   try {
-    await pool.query("UPDATE users SET profile_picture = $1 WHERE id = $2", [imageUrl, userId]);
-    res.json({ message: "Profile picture updated!", profile_picture: imageUrl });
+    await pool.query(
+      "UPDATE users SET profile_picture = $1 WHERE simple_id = $2", 
+      [imageUrl, req.params.simple_id]
+    );
+    res.json({ 
+      message: "Profile picture updated!",
+      profile_picture: imageUrl 
+    });
   } catch (err) {
     console.error("❌ PostgreSQL Error:", err);
-    res.status(500).json({ error: "Database error", details: err.message });
+    res.status(500).json({ error: "Database error" });
   }
 });
 
 // 2️⃣ ================== SAVED PLACES ==================
-// Save a place
+// Now using simple_id consistently
 app.post("/api/save-place", async (req, res) => {
-  const { user_id, place_id, name, type, price_per_night } = req.body;
+  const { simple_id, place_id, name, type, price_per_night } = req.body;
+  
   try {
     const result = await pool.query(
-      `INSERT INTO saved_places (user_id, place_id, name, type, price_per_night) 
+      `INSERT INTO saved_places (user_simple_id, place_id, name, type, price_per_night) 
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [user_id, place_id, name, type, price_per_night]
+      [simple_id, place_id, name, type, price_per_night]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -118,12 +131,12 @@ app.post("/api/save-place", async (req, res) => {
   }
 });
 
-// Get user's saved places
-app.get("/api/saved-places/:user_id", async (req, res) => {
+// Get saved places by simple_id
+app.get("/api/saved-places/:simple_id", async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT * FROM saved_places WHERE user_id = $1",
-      [req.params.user_id]
+      "SELECT * FROM saved_places WHERE user_simple_id = $1",
+      [req.params.simple_id]
     );
     res.json(result.rows);
   } catch (err) {
@@ -167,40 +180,74 @@ app.post("/api/plans", async (req, res) => {
 });
 
 // 5️⃣ ================== BOOKINGS ==================
-// Create booking after PayPal success
 app.post("/api/bookings", async (req, res) => {
-  const { user_id, plan_id, paypal_transaction_id, amount } = req.body;
+  const { simple_id, plan_id, paypal_transaction_id, amount } = req.body; // Changed to simple_id
+  
   try {
-    const result = await pool.query(
-      `INSERT INTO bookings (user_id, plan_id, paypal_transaction_id, amount) 
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [user_id, plan_id, paypal_transaction_id, amount]
+    // 1. Verify the simple_id exists
+    const userCheck = await pool.query(
+      "SELECT id FROM users WHERE simple_id = $1",
+      [simple_id]
     );
+
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // 2. Create booking
+    const result = await pool.query(
+      `INSERT INTO bookings (
+        user_simple_id,  // Changed column name
+        plan_id, 
+        paypal_transaction_id, 
+        amount,
+        status
+      ) VALUES ($1, $2, $3, $4, 'completed') 
+      RETURNING *`,
+      [simple_id, plan_id, paypal_transaction_id, amount]
+    );
+
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to create booking" });
+    console.error("❌ Booking Error:", err);
+    res.status(500).json({ 
+      error: "Failed to create booking",
+      details: err.message // Added error details for debugging
+    });
   }
 });
 
+// Get bookings by simple_id
 app.get("/api/bookings", async (req, res) => {
+  const { simple_id } = req.query; // Changed parameter name
+  
   try {
+    if (!simple_id) {
+      return res.status(400).json({ error: "simple_id parameter is required" });
+    }
+
     const result = await pool.query(
       `SELECT 
-        b.id, 
+        b.id,
+        b.paypal_transaction_id,
         p.name AS plan_name, 
         b.amount, 
         b.status, 
-        b.booked_at
+        TO_CHAR(b.booked_at, 'YYYY-MM-DD HH24:MI') AS booked_at
        FROM bookings b
        LEFT JOIN plans p ON b.plan_id = p.id
-       WHERE b.user_id = $1`,
-      [req.query.user_id]
+       WHERE b.user_simple_id = $1  // Changed column name
+       ORDER BY b.booked_at DESC`,
+      [simple_id]
     );
-    res.json(result.rows);
+
+    res.json(result.rows.length > 0 ? result.rows : []); // Always return array
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Database error" });
+    console.error("❌ Bookings Fetch Error:", err);
+    res.status(500).json({ 
+      error: "Database error",
+      details: err.message 
+    });
   }
 });
 
@@ -212,52 +259,59 @@ paypal.configure({
   client_secret: process.env.PAYPAL_CLIENT_SECRET
 });
 
-// Create payment (updated to use dynamic amount)
+// ✅ Create Payment (Uses simple_id)
 app.post("/pay", async (req, res) => {
-  const { amount, user_id } = req.body;
-  
-  // 1. Verify user exists
-  const user = await pool.query("SELECT simple_id FROM users WHERE id = $1", [user_id]);
-  if (!user.rows.length) return res.status(404).send("User not found");
-
-  // 2. Create PayPal payment
-  const payment = {
-    intent: "sale",
-    payer: { payment_method: "paypal" },
-    transactions: [{
-      amount: { currency: "MYR", total: amount.toFixed(2) },
-      description: `User ${user.rows[0].simple_id} payment`
-    }],
-    redirect_urls: {
-      return_url: "https://tripadvisor-hgg4.onrender.com/success",
-      cancel_url: "https://tripadvisor-hgg4.onrender.com/cancel"
-    }
-  };
-
-  // 3. Execute
-  paypal.payment.create(payment, (err, payment) => {
-    if (err) return res.status(500).send(err);
-    const approvalUrl = payment.links.find(link => link.rel === "approval_url").href;
-    res.json({ approval_url: approvalUrl });
-  });
-});
-
-app.get("/success", async (req, res) => {
-  const { paymentId, PayerID } = req.query;
-  const userId = "user_001"; // Replace with actual user ID (from session/JWT)
+  const { simple_id, amount, plan_name } = req.body;
 
   try {
-    // 1. Check if user exists
-    const userCheck = await pool.query(
-      "SELECT id FROM users WHERE id = $1", 
-      [userId]
+    const payment = {
+      intent: "sale",
+      payer: { payment_method: "paypal" },
+      transactions: [{
+        amount: { 
+          currency: "MYR", 
+          total: amount.toFixed(2) 
+        },
+        description: `Payment for ${plan_name} by ${simple_id}`
+      }],
+      redirect_urls: {
+        return_url: `${process.env.BASE_URL}/payment/success?simple_id=${simple_id}`,
+        cancel_url: `${process.env.BASE_URL}/payment/cancel`
+      }
+    };
+
+    paypal.payment.create(payment, (err, payment) => {
+      if (err) {
+        console.error("❌ PayPal Error:", err);
+        return res.status(500).json({ error: err.message });
+      }
+      
+      // Return approval URL to frontend
+      const approvalUrl = payment.links.find(link => link.rel === "approval_url").href;
+      res.json({ approval_url: approvalUrl });
+    });
+  } catch (err) {
+    console.error("❌ Payment Error:", err);
+    res.status(500).json({ error: "Payment failed" });
+  }
+});
+
+// ✅ Payment Success (Uses simple_id)
+app.get("/payment/success", async (req, res) => {
+  const { paymentId, PayerID, simple_id } = req.query;
+
+  try {
+    // 1. Verify user exists
+    const user = await pool.query(
+      "SELECT simple_id FROM users WHERE simple_id = $1",
+      [simple_id]
     );
 
-    if (userCheck.rows.length === 0) {
-      throw new Error(`User ${userId} not found`);
+    if (user.rows.length === 0) {
+      throw new Error("User not found");
     }
 
-    // 2. Proceed with PayPal execution and booking insertion
+    // 2. Execute PayPal payment
     const payment = await new Promise((resolve, reject) => {
       paypal.payment.execute(paymentId, { payer_id: PayerID }, (err, payment) => {
         if (err) reject(err);
@@ -265,23 +319,28 @@ app.get("/success", async (req, res) => {
       });
     });
 
-    // 3. Insert booking
+    // 3. Record transaction (example - adapt to your schema)
     await pool.query(
-      `INSERT INTO bookings (user_id, plan_id, paypal_transaction_id, amount)
-       VALUES ($1, $2, $3, $4)`,
-      [userId, "plan_123", paymentId, 99.00] // Replace with dynamic values
+      `INSERT INTO payments (
+        user_simple_id,
+        paypal_payment_id,
+        amount,
+        status
+      ) VALUES ($1, $2, $3, 'completed')`,
+      [simple_id, paymentId, payment.transactions[0].amount.total]
     );
 
-    res.redirect("yourapp://payment-success");
+    // 4. Redirect to frontend (or return JSON)
+    res.redirect(`${process.env.FRONTEND_URL}/payment-success`);
   } catch (error) {
-    console.error("Error:", error);
-    res.status(400).json({ error: error.message });
+    console.error("❌ Payment Execution Error:", error);
+    res.redirect(`${process.env.FRONTEND_URL}/payment-failed?error=${encodeURIComponent(error.message)}`);
   }
 });
 
-// ✅ Payment Cancel Endpoint
-app.get("/cancel", (req, res) => {
-    res.json({ message: "Payment cancelled" });
+// ✅ Payment Cancel
+app.get("/payment/cancel", (req, res) => {
+  res.redirect(`${process.env.FRONTEND_URL}/payment-cancelled`);
 });
 
 // 7️⃣ ================== SERVER START ==================

@@ -715,6 +715,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Destination? _searchResult;
   TabController? _tabController;
   List<Destination> _recentSearches = [];  
+  String? simpleId;
 
   @override
 void initState() {
@@ -735,18 +736,31 @@ void initState() {
   try {
     if (isGuest) {
       setState(() {
-        userId = "guest_${DateTime.now().millisecondsSinceEpoch}"; // Generate temporary guest ID
+        userId = "guest_${DateTime.now().millisecondsSinceEpoch}";
+        simpleId = null; // Guests don't have a simple_id
         print("🛠️ Guest session started: $userId");
       });
     } else {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        setState(() {
-          userId = user.uid;
-          print("✅ User logged in: $userId");
-        });
+        // Fetch the user's simple_id from your backend
+        final response = await http.get(
+          Uri.parse("https://tripadvisor-hgg4.onrender.com/users/${user.uid}"),
+          headers: {"Content-Type": "application/json"},
+        );
+
+        if (response.statusCode == 200) {
+          final userData = jsonDecode(response.body);
+          setState(() {
+            userId = user.uid; // Store Firebase UID locally
+            simpleId = userData['simple_id']; // Store simple_id for API calls
+            print("✅ User logged in: $userId | simple_id: $simpleId");
+          });
+        } else {
+          throw Exception("⚠️ Failed to fetch simple_id");
+        }
       } else {
-        throw Exception("⚠️ No user found");
+        throw Exception("⚠️ No authenticated user");
       }
     }
   } catch (e) {
@@ -756,19 +770,17 @@ void initState() {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Continue as guest")),
       );
-
-      // Fallback to guest if user fails to load
-      _fetchUserId(isGuest: true);
+      _fetchUserId(isGuest: true); // Fallback to guest
     });
   }
 
   // Timeout safeguard
   Future.delayed(Duration(seconds: 5), () {
     if (mounted && userId == null) {
-      print("⏳ Still loading... falling back to guest mode");
+      print("⏳ Timeout - Falling back to guest mode");
       Future.microtask(() {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Taking too long. Starting guest mode.")),
+          SnackBar(content: Text("Starting guest mode")),
         );
         _fetchUserId(isGuest: true);
       });
@@ -2050,44 +2062,65 @@ class _HotelsPageState extends State<HotelsPage> {
   }
 
   Future<void> _startPayment(BuildContext context) async {
-  final user = FirebaseAuth.instance.currentUser; // Get logged-in user
+  final user = FirebaseAuth.instance.currentUser;
   if (user == null) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Please log in first")),
+      const SnackBar(content: Text("Please log in first")),
     );
     return;
   }
+
   const double amount = 198.00;
+  const String planName = "Premium Trip Plan"; // Example plan name
 
   try {
-    final response = await http.post(
-      Uri.parse("https://tripadvisor-hgg4.onrender.com/pay"), // ✅ Replace with your actual URL
+    // 1. Fetch the user's simple_id from your backend
+    final userResponse = await http.get(
+      Uri.parse("https://tripadvisor-hgg4.onrender.com/users/${user.uid}"),
       headers: {"Content-Type": "application/json"},
-      body: jsonEncode({"amount": amount}), // ✅ Send as number (not string)
     );
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      final approvalUrl = data["approval_url"];
+    if (userResponse.statusCode != 200) {
+      throw Exception("Failed to fetch user details");
+    }
+
+    final userData = jsonDecode(userResponse.body);
+    final String simpleId = userData['simple_id']; // Get the simple_id
+
+    // 2. Initiate PayPal payment with simple_id
+    final paymentResponse = await http.post(
+      Uri.parse("https://tripadvisor-hgg4.onrender.com/pay"),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({
+        "simple_id": simpleId,  // Pass simple_id instead of Firebase UID
+        "amount": amount,
+        "plan_name": planName,
+      }),
+    );
+
+    if (paymentResponse.statusCode == 200) {
+      final paymentData = jsonDecode(paymentResponse.body);
+      final approvalUrl = paymentData["approval_url"];
 
       if (await canLaunchUrl(Uri.parse(approvalUrl))) {
         await launchUrl(
           Uri.parse(approvalUrl),
-          mode: LaunchMode.externalApplication, // ✅ Force browser
+          mode: LaunchMode.externalApplication,
+          webOnlyWindowName: '_blank', // Force new tab in web
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Could not open PayPal")),
+          const SnackBar(content: Text("Could not open PayPal")),
         );
       }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Backend error: ${response.body}")),
+        SnackBar(content: Text("Backend error: ${paymentResponse.body}")),
       );
     }
   } catch (e) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Network error: ${e.toString()}")),
+      SnackBar(content: Text("Error: ${e.toString()}")),
     );
   }
 }
@@ -3914,6 +3947,7 @@ class BookingsPage extends StatefulWidget {
 class _BookingsPageState extends State<BookingsPage> {
   List<dynamic> _bookings = [];
   bool _isLoading = true;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -3922,24 +3956,48 @@ class _BookingsPageState extends State<BookingsPage> {
   }
 
   Future<void> _fetchBookings() async {
-    final userId = "user_001"; // Replace with actual user ID (from Firebase/auth)
-    final url = Uri.parse("https://tripadvisor-hgg4.onrender.com/api/bookings?user_id=$userId");
-
     try {
-      final response = await http.get(url);
-      if (response.statusCode == 200) {
+      final user = FirebaseAuth.instance.currentUser;
+      
+      // Case 1: Guest user
+      if (user == null) {
         setState(() {
-          _bookings = jsonDecode(response.body);
+          _isLoading = false;
+          _errorMessage = "Please sign in to view bookings";
+        });
+        return;
+      }
+
+      // Case 2: Registered user - Fetch simple_id first
+      final userResponse = await http.get(
+        Uri.parse("https://tripadvisor-hgg4.onrender.com/users/${user.uid}"),
+      );
+
+      if (userResponse.statusCode != 200) {
+        throw Exception("Failed to fetch user details");
+      }
+
+      final userData = jsonDecode(userResponse.body);
+      final simpleId = userData['simple_id'];
+
+      // Fetch bookings using simple_id
+      final bookingsResponse = await http.get(
+        Uri.parse("https://tripadvisor-hgg4.onrender.com/api/bookings?simple_id=$simpleId"),
+      );
+
+      if (bookingsResponse.statusCode == 200) {
+        setState(() {
+          _bookings = jsonDecode(bookingsResponse.body);
           _isLoading = false;
         });
       } else {
-        throw Exception("Failed to load bookings");
+        throw Exception("No bookings found");
       }
     } catch (e) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: ${e.toString()}")),
-      );
+      setState(() {
+        _isLoading = false;
+        _errorMessage = e.toString().replaceAll("Exception: ", "");
+      });
     }
   }
 
@@ -3947,49 +4005,153 @@ class _BookingsPageState extends State<BookingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Bookings"),
+        title: Text("My Bookings"),
         centerTitle: true,
         backgroundColor: Color(0xFF628EFF),
         toolbarHeight: 80,
       ),
-      body: _isLoading
-          ? Center(child: CircularProgressIndicator())
-          : _bookings.isEmpty
-              ? Center(child: Text("No bookings found", style: TextStyle(fontSize: 18)))
-              : ListView.builder(
-                  itemCount: _bookings.length,
-                  itemBuilder: (context, index) {
-                    final booking = _bookings[index];
-                    return BookingCard(booking: booking);
-                  },
-                ),
+      body: _buildBody(),
+      floatingActionButton: _errorMessage != null
+          ? FloatingActionButton(
+              onPressed: _fetchBookings,
+              child: Icon(Icons.refresh),
+              backgroundColor: Colors.orange,
+            )
+          : null,
+    );
+  }
+
+  Widget _buildBody() {
+    if (_isLoading) {
+      return Center(child: CircularProgressIndicator());
+    }
+
+    if (_errorMessage != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              _errorMessage!,
+              style: TextStyle(fontSize: 18, color: Colors.red),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: _fetchBookings,
+              child: Text("Retry"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Color(0xFF628EFF), // Changed from 'primary'
+                padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return _bookings.isEmpty
+        ? Center(
+            child: Text(
+              "No bookings yet",
+              style: TextStyle(fontSize: 18, color: Colors.grey),
+            ),
+          )
+        : RefreshIndicator(
+            onRefresh: _fetchBookings,
+            child: ListView.builder(
+              itemCount: _bookings.length,
+              itemBuilder: (context, index) => BookingCard(
+                booking: _bookings[index],
+                onTap: () => _showBookingDetails(_bookings[index]),
+              ),
+            ),
+          );
+  }
+
+  void _showBookingDetails(Map<String, dynamic> booking) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("Booking Details"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _DetailRow("Plan:", booking["plan_name"]),
+            _DetailRow("Amount:", "MYR ${booking["amount"]?.toStringAsFixed(2)}"),
+            _DetailRow("Status:", booking["status"]),
+            _DetailRow("Date:", booking["booked_at"]?.split('T')[0]),
+            if (booking["paypal_transaction_id"] != null)
+              _DetailRow("Transaction ID:", booking["paypal_transaction_id"]),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text("Close"),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  final String label;
+  final String? value;
+
+  const _DetailRow(this.label, this.value);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          SizedBox(width: 10),
+          Expanded(child: Text(value ?? "N/A")),
+        ],
+      ),
     );
   }
 }
 
 class BookingCard extends StatelessWidget {
   final dynamic booking;
+  final VoidCallback? onTap; // Add this line
 
-  const BookingCard({Key? key, required this.booking}) : super(key: key);
+  const BookingCard({
+    Key? key,
+    required this.booking,
+    this.onTap, // Add this parameter
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return Card(
       margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              booking["plan_name"] ?? "Unnamed Plan",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 8),
-            Text("Amount: MYR ${booking["amount"]?.toStringAsFixed(2)}"),
-            Text("Status: ${booking["status"]}"),
-            Text("Date: ${booking["booked_at"]?.split('T')[0]}"),
-          ],
+      child: InkWell( // Wrap with InkWell for tap effect
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                booking["plan_name"] ?? "Unnamed Plan",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 8),
+              Text("Amount: MYR ${booking["amount"]?.toStringAsFixed(2)}"),
+              Text("Status: ${booking["status"]}"),
+              Text("Date: ${booking["booked_at"]?.split('T')[0]}"),
+            ],
+          ),
         ),
       ),
     );
