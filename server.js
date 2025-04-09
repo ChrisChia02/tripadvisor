@@ -59,24 +59,26 @@ app.post("/register", async (req, res) => {
 
 // ✅ Get User Information by ID
 app.get("/users/:id", async (req, res) => {
-  const userId = req.params.id; // Keep as string (not `parseInt`)
-
   try {
-    const result = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
+    const result = await pool.query(
+      `SELECT 
+        id AS firebase_uid,
+        simple_id AS display_id, 
+        email,
+        username
+       FROM users 
+       WHERE id = $1`,
+      [req.params.id]
+    );
 
     if (result.rows.length === 0) {
-      return res.json({
-        username: "Guest",
-        gender: "N/A",
-        phone: "N/A",
-        profile_picture: "/uploads/default_profile.png",
-      });
+      return res.status(404).json({ error: "User not found" });
     }
 
     res.json(result.rows[0]);
   } catch (err) {
-    console.error("❌ PostgreSQL Error:", err);
-    res.status(500).json({ error: "Database error", details: err.message });
+    console.error(err);
+    res.status(500).json({ error: "Database error" });
   }
 });
 
@@ -211,36 +213,32 @@ paypal.configure({
 });
 
 // Create payment (updated to use dynamic amount)
-app.post("/pay", (req, res) => {
-  const { amount } = req.body; // Use dynamic amount from request
+app.post("/pay", async (req, res) => {
+  const { amount, user_id } = req.body;
+  
+  // 1. Verify user exists
+  const user = await pool.query("SELECT simple_id FROM users WHERE id = $1", [user_id]);
+  if (!user.rows.length) return res.status(404).send("User not found");
 
-  const paymentJson = {
+  // 2. Create PayPal payment
+  const payment = {
     intent: "sale",
     payer: { payment_method: "paypal" },
-    redirect_urls: {
-      return_url: `http://${req.headers.host}/success`, // Dynamic host
-      cancel_url: `http://${req.headers.host}/cancel`
-    },
     transactions: [{
-      amount: {
-        currency: "USD", // PayPal sandbox only accepts USD
-        total: amount    // Use the amount from frontend
-      },
-      description: "Trip Booking"
-    }]
+      amount: { currency: "MYR", total: amount.toFixed(2) },
+      description: `User ${user.rows[0].simple_id} payment`
+    }],
+    redirect_urls: {
+      return_url: "https://tripadvisor-hgg4.onrender.com/success",
+      cancel_url: "https://tripadvisor-hgg4.onrender.com/cancel"
+    }
   };
 
-  paypal.payment.create(paymentJson, (error, payment) => {
-    if (error) {
-      console.error("PayPal Error:", error.response || error); // Log full error
-      res.status(500).json({ 
-        error: "Payment failed", 
-        details: error.response?.details || error.message 
-      });
-    } else {
-      const approvalUrl = payment.links.find(link => link.rel === "approval_url").href;
-      res.json({ approval_url: approvalUrl });
-    }
+  // 3. Execute
+  paypal.payment.create(payment, (err, payment) => {
+    if (err) return res.status(500).send(err);
+    const approvalUrl = payment.links.find(link => link.rel === "approval_url").href;
+    res.json({ approval_url: approvalUrl });
   });
 });
 
@@ -279,6 +277,11 @@ app.get("/success", async (req, res) => {
     console.error("Error:", error);
     res.status(400).json({ error: error.message });
   }
+});
+
+// ✅ Payment Cancel Endpoint
+app.get("/cancel", (req, res) => {
+    res.json({ message: "Payment cancelled" });
 });
 
 // 7️⃣ ================== SERVER START ==================
