@@ -190,38 +190,36 @@ paypal.configure({
 
 // ✅ Route to Create Payment
 app.post("/pay", (req, res) => {
-    const { amount } = req.body; // Amount from request
+  const { amount } = req.body; // Use dynamic amount from request
 
-    const paymentJson = {
-        intent: "sale",
-        payer: {
-            payment_method: "paypal"
-        },
-        redirect_urls: {
-            return_url: "http://${process.env.BASE_URL}/success",
-            cancel_url: "http://${process.env.BASE_URL}/cancel"
-        },
-        transactions: [{
-            amount: {
-                currency: "USD",
-                total: 40.00
-            },
-            description: "Trip Advisor Booking"
-        }]
-    };
+  const paymentJson = {
+    intent: "sale",
+    payer: { payment_method: "paypal" },
+    redirect_urls: {
+      return_url: `http://${req.headers.host}/success`, // Dynamic host
+      cancel_url: `http://${req.headers.host}/cancel`
+    },
+    transactions: [{
+      amount: {
+        currency: "USD", // PayPal sandbox only accepts USD
+        total: amount    // Use the amount from frontend
+      },
+      description: "Trip Booking"
+    }]
+  };
 
-    paypal.payment.create(paymentJson, (error, payment) => {
-        if (error) {
-            console.error(error);
-            res.status(500).json({ error: "Payment failed", details: error });
-        } else {
-            for (let link of payment.links) {
-                if (link.rel === "approval_url") {
-                    return res.json({ approval_url: link.href });
-                }
-            }
-        }
-    });
+  paypal.payment.create(paymentJson, (error, payment) => {
+    if (error) {
+      console.error("PayPal Error:", error.response || error); // Log full error
+      res.status(500).json({ 
+        error: "Payment failed", 
+        details: error.response?.details || error.message 
+      });
+    } else {
+      const approvalUrl = payment.links.find(link => link.rel === "approval_url").href;
+      res.json({ approval_url: approvalUrl });
+    }
+  });
 });
 
 // ✅ Payment Success Endpoint
