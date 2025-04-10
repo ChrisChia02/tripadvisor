@@ -146,46 +146,39 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _login() async {
   setState(() => _isLoading = true);
   try {
-    // 1. Firebase Authentication
-    final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
+    // 1. Firebase Auth
     final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-      email: email,
-      password: password,
+      email: _emailController.text.trim(),
+      password: _passwordController.text.trim(),
     );
     final uid = userCredential.user?.uid;
-    if (uid == null) throw Exception('Firebase UID is null');
+    if (uid == null) throw Exception('No UID after login');
 
-    // 2. DEBUG: Print UID for verification
-    debugPrint('FIREBASE UID: $uid');
-
-    // 3. Directly fetch simple_id from backend
+    // 2. Fetch complete user data
     final response = await http.get(
       Uri.parse('https://tripadvisor-hgg4.onrender.com/users/$uid'),
-      headers: {'Content-Type': 'application/json'},
     );
 
-    // 4. DEBUG: Print raw backend response
-    debugPrint('BACKEND RESPONSE: ${response.statusCode} - ${response.body}');
+    debugPrint('Backend response: ${response.body}'); // Verify this shows all fields
 
     if (response.statusCode == 200) {
-      final simpleId = jsonDecode(response.body)['simple_id']?.toString();
-      if (simpleId == null) throw Exception('simple_id is null in response');
-
-      // 5. DEBUG: Verify storage operation
-      await const FlutterSecureStorage().write(key: 'simple_id', value: simpleId);
-      final storedValue = await const FlutterSecureStorage().read(key: 'simple_id');
-      debugPrint('STORAGE VERIFICATION: $storedValue');
-
-      if (storedValue != simpleId) throw Exception('Storage failed');
+      final userData = jsonDecode(response.body);
       
-      Navigator.pushReplacementNamed(context, "/locationPermission");
-    } else {
-      throw Exception('API error: ${response.statusCode}');
+      // 3. Store all data
+      await Future.wait([
+        const FlutterSecureStorage().write(key: 'simple_id', value: userData['simple_id']),
+        if (userData['username'] != null) 
+          const FlutterSecureStorage().write(key: 'username', value: userData['username']),
+        if (userData['gender'] != null)
+          const FlutterSecureStorage().write(key: 'gender', value: userData['gender']),
+        if (userData['phone'] != null)
+          const FlutterSecureStorage().write(key: 'phone', value: userData['phone']),
+      ]);
+
+      Navigator.pushReplacementNamed(context, "/home");
     }
   } catch (e) {
-    debugPrint('LOGIN ERROR: $e');
-    showToast(e.toString().replaceAll('Exception: ', ''));
+    debugPrint('Login error: $e');
   } finally {
     if (mounted) setState(() => _isLoading = false);
   }
