@@ -71,7 +71,7 @@ app.get('/users/:firebase_uid', async (req, res) => {
     const { firebase_uid } = req.params; // Use the exact parameter name
 
     const result = await pool.query(
-      `SELECT simple_id FROM users WHERE id = $1`, // Must query 'id' column
+      `SELECT simple_id, username, gender, phone FROM users WHERE id = $1`, // Must query 'id' column
       [firebase_uid]
     );
 
