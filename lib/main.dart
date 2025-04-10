@@ -13,6 +13,9 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
 //import 'package:flutter_braintree/flutter_braintree.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:provider/provider.dart';
+import 'auth_services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class Destination {
   final String name;
@@ -63,6 +66,10 @@ class PointOfInterest {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(); // Initialize Firebase
+
+  final authService = AuthService();
+  await authService.initAuthListener(); // Start listening to auth changes
+
   runApp(MaterialApp(
     debugShowCheckedModeBanner: false,
     initialRoute: "/login",
@@ -75,6 +82,33 @@ void main() async {
       "/home": (context) => HomePage(),
     },
   ));
+}
+
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        // Show loading while checking auth state
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        // User logged in - go to HomePage
+        if (snapshot.hasData) {
+          return HomePage();
+        }
+
+        // User not logged in - go to LoginPage
+        return LoginPage();
+      },
+    );
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -110,43 +144,50 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _login() async {
-  setState(() {
-    _isLoading = true;
-  });
-
+  setState(() => _isLoading = true);
   try {
-    String email = _emailController.text.trim();
-    String password = _passwordController.text.trim();
+    // 1. Firebase Authentication
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+    final uid = userCredential.user?.uid;
+    if (uid == null) throw Exception('Firebase UID is null');
 
-    // 🔥 1. Fetch user document from Firestore
-    QuerySnapshot querySnapshot = await FirebaseFirestore.instance
-        .collection("User") // Check the exact name of your collection
-        .where("Email", isEqualTo: email)
-        .limit(1)
-        .get();
+    // 2. DEBUG: Print UID for verification
+    debugPrint('FIREBASE UID: $uid');
 
-    if (querySnapshot.docs.isEmpty) {
-      showToast("User not found! Please register.");
-      return;
+    // 3. Directly fetch simple_id from backend
+    final response = await http.get(
+      Uri.parse('https://tripadvisor-hgg4.onrender.com/users/$uid'),
+      headers: {'Content-Type': 'application/json'},
+    );
+
+    // 4. DEBUG: Print raw backend response
+    debugPrint('BACKEND RESPONSE: ${response.statusCode} - ${response.body}');
+
+    if (response.statusCode == 200) {
+      final simpleId = jsonDecode(response.body)['simple_id']?.toString();
+      if (simpleId == null) throw Exception('simple_id is null in response');
+
+      // 5. DEBUG: Verify storage operation
+      await const FlutterSecureStorage().write(key: 'simple_id', value: simpleId);
+      final storedValue = await const FlutterSecureStorage().read(key: 'simple_id');
+      debugPrint('STORAGE VERIFICATION: $storedValue');
+
+      if (storedValue != simpleId) throw Exception('Storage failed');
+      
+      Navigator.pushReplacementNamed(context, "/locationPermission");
+    } else {
+      throw Exception('API error: ${response.statusCode}');
     }
-
-    // 🔥 2. Retrieve the user's password from Firestore
-    var userData = querySnapshot.docs.first.data() as Map<String, dynamic>;
-
-    if (userData["Password"] != password) {
-      showToast("Incorrect password! Try again.");
-      return;
-    }
-
-    // 🔥 3. If credentials are correct, navigate to home
-    showToast("Login successful!");
-    Navigator.pushReplacementNamed(context, "/locationPermission");
   } catch (e) {
-    showToast("Error: ${e.toString()}");
+    debugPrint('LOGIN ERROR: $e');
+    showToast(e.toString().replaceAll('Exception: ', ''));
   } finally {
-    setState(() {
-      _isLoading = false;
-    });
+    if (mounted) setState(() => _isLoading = false);
   }
 }
 
@@ -255,13 +296,38 @@ class _LoginPageState extends State<LoginPage> {
 
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Color(0xFF5856D6),
-                  minimumSize: Size(double.infinity, 50),
+                  backgroundColor: const Color(0xFF5856D6),
+                  minimumSize: const Size(double.infinity, 50),
                 ),
-                onPressed: _isLoading ? null : _login,
+                onPressed: _isLoading ? null : () async {
+                setState(() => _isLoading = true);
+                try {
+                  await _login();
+                  
+                  // Debug check
+                  final storedId = await const FlutterSecureStorage().read(key: 'simple_id');
+                  debugPrint('CONFIRMED simple_id: $storedId'); // Should NOT be null
+                  
+                  if (storedId == null) {
+                    throw Exception('simple_id storage failed!');
+                  }
+                } catch (e) {
+                  debugPrint('Error: $e');
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Login failed: ${e.toString()}')),
+                    );
+                  }
+                } finally {
+                  if (mounted) setState(() => _isLoading = false);
+                }
+              },
                 child: _isLoading
-                    ? CircularProgressIndicator(color: Colors.white)
-                    : Text("Login", style: TextStyle(fontSize: 18, color: Colors.white)),
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text(
+                        "Login", 
+                        style: TextStyle(fontSize: 18, color: Colors.white),
+                      ),
               ),
               SizedBox(height: 20),
 
@@ -2062,65 +2128,51 @@ class _HotelsPageState extends State<HotelsPage> {
   }
 
   Future<void> _startPayment(BuildContext context) async {
-  final user = FirebaseAuth.instance.currentUser;
-  if (user == null) {
+  final authService = Provider.of<AuthService>(context, listen: false);
+  final simpleId = await authService.getSimpleId();
+
+  // Case 1: Guest user
+  if (simpleId == null || simpleId.startsWith('guest_')) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Please log in first")),
+      const SnackBar(content: Text('Please sign in to make payments')),
     );
     return;
   }
 
-  const double amount = 198.00;
-  const String planName = "Premium Trip Plan"; // Example plan name
-
+  // Case 2: Registered user
   try {
-    // 1. Fetch the user's simple_id from your backend
-    final userResponse = await http.get(
-      Uri.parse("https://tripadvisor-hgg4.onrender.com/users/${user.uid}"),
-      headers: {"Content-Type": "application/json"},
-    );
-
-    if (userResponse.statusCode != 200) {
-      throw Exception("Failed to fetch user details");
-    }
-
-    final userData = jsonDecode(userResponse.body);
-    final String simpleId = userData['simple_id']; // Get the simple_id
-
-    // 2. Initiate PayPal payment with simple_id
-    final paymentResponse = await http.post(
-      Uri.parse("https://tripadvisor-hgg4.onrender.com/pay"),
-      headers: {"Content-Type": "application/json"},
+    debugPrint('Initiating payment for $simpleId');
+    
+    final response = await http.post(
+      Uri.parse('https://tripadvisor-hgg4.onrender.com/pay'),
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
-        "simple_id": simpleId,  // Pass simple_id instead of Firebase UID
-        "amount": amount,
-        "plan_name": planName,
+        'simple_id': simpleId,
+        'amount': 198.00,
+        'plan_name': 'Premium Plan',
       }),
     );
 
-    if (paymentResponse.statusCode == 200) {
-      final paymentData = jsonDecode(paymentResponse.body);
-      final approvalUrl = paymentData["approval_url"];
-
+    if (response.statusCode == 200) {
+      final paymentData = jsonDecode(response.body);
+      final approvalUrl = paymentData['approval_url'];
+      
+      debugPrint('Payment initiated. Redirecting to: $approvalUrl');
+      
       if (await canLaunchUrl(Uri.parse(approvalUrl))) {
         await launchUrl(
           Uri.parse(approvalUrl),
           mode: LaunchMode.externalApplication,
-          webOnlyWindowName: '_blank', // Force new tab in web
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Could not open PayPal")),
+          webOnlyWindowName: '_blank',
         );
       }
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Backend error: ${paymentResponse.body}")),
-      );
+      throw Exception('Payment failed: ${response.body}');
     }
   } catch (e) {
+    debugPrint('Payment error: $e');
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Error: ${e.toString()}")),
+      SnackBar(content: Text('Payment failed: ${e.toString()}')),
     );
   }
 }
