@@ -68,19 +68,21 @@ app.post("/register", async (req, res) => {
 // ✅ Get User by simple_id
 app.get('/users/:firebase_uid', async (req, res) => {
   try {
-    const { firebase_uid } = req.params; // Use the exact parameter name
-
     const result = await pool.query(
-      `SELECT simple_id, username, gender, phone FROM users WHERE id = $1`, // Must query 'id' column
-      [firebase_uid]
+      `SELECT simple_id, username, gender, phone FROM users WHERE id = $1`,
+      [req.params.firebase_uid]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    res.json({ 
-      simple_id: result.rows[0].simple_id 
+    // Return ALL user data
+    res.json({
+      simple_id: result.rows[0].simple_id,
+      username: result.rows[0].username,
+      gender: result.rows[0].gender,
+      phone: result.rows[0].phone
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
