@@ -4009,20 +4009,9 @@ class _BookingsPageState extends State<BookingsPage> {
       }
 
       // Case 2: Registered user - Fetch simple_id first
-      final userResponse = await http.get(
-        Uri.parse("https://tripadvisor-hgg4.onrender.com/users/${user.uid}"),
-      );
-
-      if (userResponse.statusCode != 200) {
-        throw Exception("Failed to fetch user details");
-      }
-
-      final userData = jsonDecode(userResponse.body);
-      final simpleId = userData['simple_id'];
-
-      // Fetch bookings using simple_id
+      // Fetch bookings
       final bookingsResponse = await http.get(
-        Uri.parse("https://tripadvisor-hgg4.onrender.com/api/bookings?simple_id=$simpleId"),
+        Uri.parse("https://tripadvisor-hgg4.onrender.com/api/bookings?user_id=${user.uid}"),
       );
 
       if (bookingsResponse.statusCode == 200) {
@@ -4118,7 +4107,7 @@ class _BookingsPageState extends State<BookingsPage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _DetailRow("Plan:", booking["plan_name"]),
+            //_DetailRow("Plan:", booking["plan_name"]),
             _DetailRow("Amount:", "MYR ${booking["amount"]?.toStringAsFixed(2)}"),
             _DetailRow("Status:", booking["status"]),
             _DetailRow("Date:", booking["booked_at"]?.split('T')[0]),

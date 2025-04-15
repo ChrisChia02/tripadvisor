@@ -217,15 +217,13 @@ app.get("/api/bookings", async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT 
-        b.id, 
-        COALESCE(p.name, 'Quick Booking') AS plan_name,
-        b.amount, 
-        b.status, 
-        b.booked_at
-       FROM bookings b
-       LEFT JOIN plans p ON b.plan_id = p.plan_id
-       WHERE b.user_id = $1
-       ORDER BY b.booked_at DESC`,
+        id, 
+        amount, 
+        status, 
+        booked_at
+       FROM bookings
+       WHERE user_id = $1
+       ORDER BY booked_at DESC`,
       [req.query.user_id]
     );
     res.json(result.rows);
