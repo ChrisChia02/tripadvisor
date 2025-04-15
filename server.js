@@ -259,7 +259,10 @@ app.post("/pay", (req, res) => {
         total: amount
       },
       description: "Trip Booking",
-      custom: JSON.stringify({ user_id, plan_id }) // 👈 include custom metadata
+      custom: JSON.stringify({ 
+        user_id: req.body.user_id, 
+        plan_id: req.body.plan_id 
+      }) // 👈 include custom metadata
     }],
   };
 
@@ -278,22 +281,46 @@ app.post("/pay", (req, res) => {
 });
 
 // ✅ Payment Success Endpoint
-app.get("/success", (req, res) => {
-    const payerId = req.query.PayerID;
-    const paymentId = req.query.paymentId;
-
-    const executePaymentJson = {
-        payer_id: payerId
-    };
-
-    paypal.payment.execute(paymentId, executePaymentJson, (error, payment) => {
-        if (error) {
-            console.error(error.response);
-            return res.status(500).json({ error: "Payment execution failed" });
-        } else {
-            return res.json({ message: "Payment successful!", payment });
-        }
+app.get("/success", async (req, res) => {  // Make async
+  const { paymentId, PayerID } = req.query;
+  
+  try {
+    const payment = await new Promise((resolve, reject) => {
+      paypal.payment.execute(paymentId, { payer_id: PayerID }, (err, payment) => {
+        err ? reject(err) : resolve(payment);
+      });
     });
+
+    // Extract metadata from payment
+    const custom = JSON.parse(payment.transactions[0].custom);
+    
+    // Create booking
+    const booking = await pool.query(
+      `INSERT INTO bookings 
+       (user_id, plan_id, paypal_transaction_id, amount, status)
+       VALUES ($1, $2, $3, $4, 'paid')
+       RETURNING *`,
+      [
+        custom.user_id,
+        custom.plan_id,
+        paymentId,
+        payment.transactions[0].amount.total
+      ]
+    );
+
+    res.json({ 
+      success: true, 
+      booking: booking.rows[0],
+      payment_details: payment 
+    });
+
+  } catch (err) {
+    console.error("💥 Payment processing failed:", err);
+    res.status(500).json({ 
+      error: "Payment processing failed",
+      details: err.response?.details || err.message 
+    });
+  }
 });
 
 // ✅ Payment Cancel Endpoint
