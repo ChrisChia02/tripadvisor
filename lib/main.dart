@@ -164,9 +164,9 @@ class _LoginPageState extends State<LoginPage> {
     if (response.statusCode == 200) {
       final userData = jsonDecode(response.body);
       
-      // 3. Store all data
+      // 3. Store user data (using Firebase UID instead of simple_id)
       await Future.wait([
-        const FlutterSecureStorage().write(key: 'simple_id', value: userData['simple_id']),
+        const FlutterSecureStorage().write(key: 'uid', value: uid),
         if (userData['username'] != null) 
           const FlutterSecureStorage().write(key: 'username', value: userData['username']),
         if (userData['gender'] != null)
@@ -179,6 +179,8 @@ class _LoginPageState extends State<LoginPage> {
     }
   } catch (e) {
     debugPrint('Login error: $e');
+    // You might want to show an error message to the user
+    showToast("Login failed: ${e.toString()}");
   } finally {
     if (mounted) setState(() => _isLoading = false);
   }
