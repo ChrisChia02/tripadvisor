@@ -4108,7 +4108,7 @@ class _BookingsPageState extends State<BookingsPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             //_DetailRow("Plan:", booking["plan_name"]),
-            _DetailRow("Amount:", "MYR ${booking["amount"]?.toStringAsFixed(2)}"),
+            _DetailRow("Amount:", "MYR ${(double.parse(booking["amount"].toString())).toStringAsFixed(2)}"),
             _DetailRow("Status:", booking["status"]),
             _DetailRow("Date:", booking["booked_at"]?.split('T')[0]),
             if (booking["paypal_transaction_id"] != null)
@@ -4117,9 +4117,16 @@ class _BookingsPageState extends State<BookingsPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text("Close"),
-          ),
+            onPressed: () {
+            final lat = booking["place_lat"];
+            final lng = booking["place_lng"];
+            if (lat != null && lng != null) {
+              final googleMapsUrl = "https://www.google.com/maps/dir/?api=1&destination=$lat,$lng";
+              launchUrl(Uri.parse(googleMapsUrl));
+            }
+          },
+          child: Text("Navigate"),
+        ),
         ],
       ),
     );
@@ -4172,11 +4179,11 @@ class BookingCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                booking["plan_name"] ?? "Unnamed Plan",
+                booking["place_name"] ?? "Unnamed Plan",
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               SizedBox(height: 8),
-              Text("Amount: MYR ${booking["amount"]?.toStringAsFixed(2)}"),
+              Text("Amount: MYR ${double.tryParse(booking["amount"].toString())?.toStringAsFixed(2) ?? "0.00"}"),
               Text("Status: ${booking["status"]}"),
               Text("Date: ${booking["booked_at"]?.split('T')[0]}"),
             ],

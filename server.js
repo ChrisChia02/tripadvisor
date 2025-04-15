@@ -199,13 +199,13 @@ app.post("/api/plans", async (req, res) => {
 // 5️⃣ ================== BOOKINGS ==================
 // Create booking after PayPal success
 app.post("/api/bookings", async (req, res) => {
-  const { user_id, plan_id, paypal_transaction_id, amount } = req.body;
+ const { user_id, plan_id, paypal_transaction_id, amount, place_name, place_lat, place_lng } = req.body;
   try {
     const result = await pool.query(
-      `INSERT INTO bookings (user_id, plan_id, paypal_transaction_id, amount) 
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [user_id, plan_id, paypal_transaction_id, amount]
-    );
+  `INSERT INTO bookings (user_id, plan_id, paypal_transaction_id, amount, place_name, place_lat, place_lng) 
+   VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+  [user_id, plan_id, paypal_transaction_id, amount, place_name, place_lat, place_lng]
+ );
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err);
@@ -217,13 +217,18 @@ app.get("/api/bookings", async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT 
-        id, 
-        amount, 
-        status, 
-        booked_at
-       FROM bookings
-       WHERE user_id = $1
-       ORDER BY booked_at DESC`,
+  	b.id, 
+  	b.place_name, 
+  	b.place_lat,
+  	b.place_lng,
+  	p.name AS plan_name, 
+  	b.amount, 
+  	b.status, 
+ 	b.booked_at
+	FROM bookings b
+	LEFT JOIN plans p ON b.plan_id = p.id
+	WHERE b.user_id = $1;
+	`,
       [req.query.user_id]
     );
     res.json(result.rows);
