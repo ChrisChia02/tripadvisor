@@ -299,13 +299,6 @@ class _LoginPageState extends State<LoginPage> {
                 try {
                   await _login();
                   
-                  // Debug check
-                  final storedId = await const FlutterSecureStorage().read(key: 'simple_id');
-                  debugPrint('CONFIRMED simple_id: $storedId'); // Should NOT be null
-                  
-                  if (storedId == null) {
-                    throw Exception('simple_id storage failed!');
-                  }
                 } catch (e) {
                   debugPrint('Error: $e');
                   if (mounted) {
@@ -776,7 +769,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Destination? _searchResult;
   TabController? _tabController;
   List<Destination> _recentSearches = [];  
-  String? simpleId;
 
   @override
 void initState() {
@@ -798,13 +790,12 @@ void initState() {
     if (isGuest) {
       setState(() {
         userId = "guest_${DateTime.now().millisecondsSinceEpoch}";
-        simpleId = null; // Guests don't have a simple_id
         print("🛠️ Guest session started: $userId");
       });
     } else {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        // Fetch the user's simple_id from your backend
+        // Fetch the user's _id from your backend
         final response = await http.get(
           Uri.parse("https://tripadvisor-hgg4.onrender.com/users/${user.uid}"),
           headers: {"Content-Type": "application/json"},
@@ -814,11 +805,8 @@ void initState() {
           final userData = jsonDecode(response.body);
           setState(() {
             userId = user.uid; // Store Firebase UID locally
-            simpleId = userData['simple_id']; // Store simple_id for API calls
-            print("✅ User logged in: $userId | simple_id: $simpleId");
+            print("✅ User logged in: $userId");
           });
-        } else {
-          throw Exception("⚠️ Failed to fetch simple_id");
         }
       } else {
         throw Exception("⚠️ No authenticated user");
@@ -2123,26 +2111,28 @@ class _HotelsPageState extends State<HotelsPage> {
   }
 
   Future<void> _startPayment(BuildContext context) async {
-  final authService = Provider.of<AuthService>(context, listen: false);
-  final simpleId = await authService.getSimpleId();
+  final user = FirebaseAuth.instance.currentUser;
 
-  // Case 1: Guest user
-  if (simpleId == null || simpleId.startsWith('guest_')) {
+  // Case 1: Guest or not logged in
+  if (user == null) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Please sign in to make payments')),
     );
     return;
   }
 
-  // Case 2: Registered user
+  final firebaseUid = user.uid;
+  final planId = 'your_plan_id_here'; // Replace this with your actual plan ID logic
+
   try {
-    debugPrint('Initiating payment for $simpleId');
-    
+    debugPrint('Initiating payment for Firebase UID: $firebaseUid');
+
     final response = await http.post(
       Uri.parse('https://tripadvisor-hgg4.onrender.com/pay'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
-        'simple_id': simpleId,
+        'user_id': firebaseUid,
+        'plan_id': planId,
         'amount': 198.00,
         'plan_name': 'Premium Plan',
       }),
@@ -2151,9 +2141,9 @@ class _HotelsPageState extends State<HotelsPage> {
     if (response.statusCode == 200) {
       final paymentData = jsonDecode(response.body);
       final approvalUrl = paymentData['approval_url'];
-      
+
       debugPrint('Payment initiated. Redirecting to: $approvalUrl');
-      
+
       if (await canLaunchUrl(Uri.parse(approvalUrl))) {
         await launchUrl(
           Uri.parse(approvalUrl),

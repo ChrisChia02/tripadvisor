@@ -281,9 +281,9 @@ app.post("/pay", (req, res) => {
 });
 
 // ✅ Payment Success Endpoint
-app.get("/success", async (req, res) => {  // Make async
+app.get("/success", async (req, res) => {
   const { paymentId, PayerID } = req.query;
-  
+
   try {
     const payment = await new Promise((resolve, reject) => {
       paypal.payment.execute(paymentId, { payer_id: PayerID }, (err, payment) => {
@@ -291,34 +291,47 @@ app.get("/success", async (req, res) => {  // Make async
       });
     });
 
-    // Extract metadata from payment
+    // Extract metadata
     const custom = JSON.parse(payment.transactions[0].custom);
-    
-    // Create booking
+    const userId = custom.user_id;
+    let planId = custom.plan_id;
+
+    // 🔍 If no plan_id, create a Quick Plan
+    if (!planId) {
+      const quickPlan = await pool.query(
+        `INSERT INTO plans (user_id, name, created_at) 
+         VALUES ($1, $2, NOW()) 
+         RETURNING plan_id`,
+        [userId, 'Quick Booking Plan']
+      );
+      planId = quickPlan.rows[0].plan_id;
+    }
+
+    // ✅ Insert booking
     const booking = await pool.query(
       `INSERT INTO bookings 
        (user_id, plan_id, paypal_transaction_id, amount, status)
        VALUES ($1, $2, $3, $4, 'paid')
        RETURNING *`,
       [
-        custom.user_id,
-        custom.plan_id,
+        userId,
+        planId,
         paymentId,
         payment.transactions[0].amount.total
       ]
     );
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       booking: booking.rows[0],
-      payment_details: payment 
+      payment_details: payment
     });
 
   } catch (err) {
     console.error("💥 Payment processing failed:", err);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Payment processing failed",
-      details: err.response?.details || err.message 
+      details: err.response?.details || err.message
     });
   }
 });
