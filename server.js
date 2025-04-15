@@ -217,18 +217,15 @@ app.get("/api/bookings", async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT 
-  	b.id, 
-  	b.place_name, 
-  	b.place_lat,
-  	b.place_lng,
-  	p.name AS plan_name, 
-  	b.amount, 
-  	b.status, 
- 	b.booked_at
-	FROM bookings b
-	LEFT JOIN plans p ON b.plan_id = p.id
-	WHERE b.user_id = $1;
-	`,
+        b.id, 
+        b.place_name, 
+        b.place_lat,
+        b.place_lng,
+        b.amount, 
+        b.status, 
+        b.booked_at
+       FROM bookings b
+       WHERE b.user_id = $1`,
       [req.query.user_id]
     );
     res.json(result.rows);
