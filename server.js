@@ -30,29 +30,62 @@ const upload = multer({
 
 // 1️⃣ ================== USERS ==================
 app.post("/register", async (req, res) => {
+  console.log("📦 Full request body:", JSON.stringify(req.body, null, 2));
+  
   const { firebaseUserId, email, username, gender, phone } = req.body;
 
+  // Validation
+  if (!firebaseUserId?.trim()) {
+    console.error("❌ Missing firebaseUserId");
+    return res.status(400).json({ error: "Firebase UID required" });
+  }
+
   try {
-    // Check if user already exists
+    // Test database connection first
+    await pool.query("SELECT 1");
+    console.log("✔️ Database connection OK");
+
     const existingUser = await pool.query(
-      "SELECT * FROM users WHERE id = $1",
+      "SELECT id FROM users WHERE id = $1", 
       [firebaseUserId]
     );
 
     if (existingUser.rows.length > 0) {
-      return res.status(400).json({ error: "User already exists" });
+      console.warn("⚠️ Conflict - User exists:", existingUser.rows[0]);
+      return res.status(409).json({ error: "User already registered" });
     }
 
-    // Insert user into PostgreSQL
+    console.log("ℹ️ Attempting insert with:", {
+      id: firebaseUserId,
+      email,
+      username,
+      gender,
+      phone
+    });
+
     const result = await pool.query(
-      "INSERT INTO users (id, email, username, gender, phone) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+      `INSERT INTO users 
+       (id, email, username, gender, phone) 
+       VALUES ($1, $2, $3, $4, $5) 
+       RETURNING id, email`,
       [firebaseUserId, email, username, gender, phone]
     );
 
-    res.status(201).json({ message: "User registered successfully", user: result.rows[0] });
+    console.log("✅ Insert result:", result.rows[0]);
+    return res.status(201).json(result.rows[0]);
+
   } catch (error) {
-    console.error("❌ PostgreSQL Error:", error);
-    res.status(500).json({ error: "Database error" });
+    console.error("💥 Full error:", {
+      message: error.message,
+      stack: error.stack,
+      code: error.code, // PostgreSQL error code
+      detail: error.detail
+    });
+    return res.status(500).json({ 
+      error: "Registration failed",
+      details: error.message,
+      hint: error.hint || null 
+    });
   }
 });
 
@@ -222,11 +255,12 @@ app.post("/pay", (req, res) => {
     },
     transactions: [{
       amount: {
-        currency: "USD", // PayPal sandbox only accepts USD
-        total: amount    // Use the amount from frontend
+        currency: "USD",
+        total: amount
       },
-      description: "Trip Booking"
-    }]
+      description: "Trip Booking",
+      custom: JSON.stringify({ user_id, plan_id }) // 👈 include custom metadata
+    }],
   };
 
   paypal.payment.create(paymentJson, (error, payment) => {
