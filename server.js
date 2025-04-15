@@ -261,7 +261,6 @@ app.post("/pay", (req, res) => {
       description: "Trip Booking",
       custom: JSON.stringify({ 
         user_id: req.body.user_id, 
-        plan_id: req.body.plan_id 
       }) // 👈 include custom metadata
     }],
   };
@@ -294,28 +293,15 @@ app.get("/success", async (req, res) => {
     // Extract metadata
     const custom = JSON.parse(payment.transactions[0].custom);
     const userId = custom.user_id;
-    let planId = custom.plan_id;
 
-    // 🔍 If no plan_id, create a Quick Plan
-    if (!planId) {
-      const quickPlan = await pool.query(
-        `INSERT INTO plans (user_id, name, created_at) 
-         VALUES ($1, $2, NOW()) 
-         RETURNING plan_id`,
-        [userId, 'Quick Booking Plan']
-      );
-      planId = quickPlan.rows[0].plan_id;
-    }
-
-    // ✅ Insert booking
+    // ✅ Insert booking (no plan_id)
     const booking = await pool.query(
       `INSERT INTO bookings 
-       (user_id, plan_id, paypal_transaction_id, amount, status)
-       VALUES ($1, $2, $3, $4, 'paid')
+       (user_id, paypal_transaction_id, amount, status)
+       VALUES ($1, $2, $3, 'paid')
        RETURNING *`,
       [
         userId,
-        planId,
         paymentId,
         payment.transactions[0].amount.total
       ]

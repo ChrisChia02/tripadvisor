@@ -2132,7 +2132,7 @@ class _HotelsPageState extends State<HotelsPage> {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'user_id': firebaseUid,
-        'plan_id': planId,
+        'plan_id': null,
         'amount': 198.00,
         'plan_name': 'Premium Plan',
       }),
