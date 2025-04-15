@@ -31,9 +31,22 @@ const upload = multer({
 // 1️⃣ ================== USERS ================== 
 // ✅ Register user (returns simple_id)
 app.post("/register", async (req, res) => {
+<<<<<<< HEAD
   const { firebaseUid, email } = req.body;
+=======
+  console.log("📦 Full request body:", JSON.stringify(req.body, null, 2));
+  
+  const { firebaseUserId, email, username, gender, phone } = req.body;
+>>>>>>> nice
+
+  // Validation
+  if (!firebaseUserId?.trim()) {
+    console.error("❌ Missing firebaseUserId");
+    return res.status(400).json({ error: "Firebase UID required" });
+  }
 
   try {
+<<<<<<< HEAD
     // Check if user exists (by Firebase UID or email)
     const existingUser = await pool.query(
       "SELECT simple_id FROM users WHERE id = $1 OR email = $2",
@@ -59,9 +72,53 @@ app.post("/register", async (req, res) => {
       message: "User registered successfully",
       simple_id: result.rows[0].simple_id 
     });
+=======
+    // Test database connection first
+    await pool.query("SELECT 1");
+    console.log("✔️ Database connection OK");
+
+    const existingUser = await pool.query(
+      "SELECT id FROM users WHERE id = $1", 
+      [firebaseUserId]
+    );
+
+    if (existingUser.rows.length > 0) {
+      console.warn("⚠️ Conflict - User exists:", existingUser.rows[0]);
+      return res.status(409).json({ error: "User already registered" });
+    }
+
+    console.log("ℹ️ Attempting insert with:", {
+      id: firebaseUserId,
+      email,
+      username,
+      gender,
+      phone
+    });
+
+    const result = await pool.query(
+      `INSERT INTO users 
+       (id, email, username, gender, phone) 
+       VALUES ($1, $2, $3, $4, $5) 
+       RETURNING id, email`,
+      [firebaseUserId, email, username, gender, phone]
+    );
+
+    console.log("✅ Insert result:", result.rows[0]);
+    return res.status(201).json(result.rows[0]);
+
+>>>>>>> nice
   } catch (error) {
-    console.error("❌ PostgreSQL Error:", error);
-    res.status(500).json({ error: "Database error" });
+    console.error("💥 Full error:", {
+      message: error.message,
+      stack: error.stack,
+      code: error.code, // PostgreSQL error code
+      detail: error.detail
+    });
+    return res.status(500).json({ 
+      error: "Registration failed",
+      details: error.message,
+      hint: error.hint || null 
+    });
   }
 });
 
@@ -262,6 +319,7 @@ paypal.configure({
 app.post("/pay", async (req, res) => {
   const { simple_id, amount, plan_name } = req.body;
 
+<<<<<<< HEAD
   try {
     const payment = {
       intent: "sale",
@@ -292,6 +350,82 @@ app.post("/pay", async (req, res) => {
   } catch (err) {
     console.error("❌ Payment Error:", err);
     res.status(500).json({ error: "Payment failed" });
+=======
+  const paymentJson = {
+    intent: "sale",
+    payer: { payment_method: "paypal" },
+    redirect_urls: {
+      return_url: `http://${req.headers.host}/success`, // Dynamic host
+      cancel_url: `http://${req.headers.host}/cancel`
+    },
+    transactions: [{
+      amount: {
+        currency: "USD",
+        total: amount
+      },
+      description: "Trip Booking",
+      custom: JSON.stringify({ 
+        user_id: req.body.user_id, 
+        plan_id: req.body.plan_id 
+      }) // 👈 include custom metadata
+    }],
+  };
+
+  paypal.payment.create(paymentJson, (error, payment) => {
+    if (error) {
+      console.error("PayPal Error:", error.response || error); // Log full error
+      res.status(500).json({ 
+        error: "Payment failed", 
+        details: error.response?.details || error.message 
+      });
+    } else {
+      const approvalUrl = payment.links.find(link => link.rel === "approval_url").href;
+      res.json({ approval_url: approvalUrl });
+    }
+  });
+});
+
+// ✅ Payment Success Endpoint
+app.get("/success", async (req, res) => {  // Make async
+  const { paymentId, PayerID } = req.query;
+  
+  try {
+    const payment = await new Promise((resolve, reject) => {
+      paypal.payment.execute(paymentId, { payer_id: PayerID }, (err, payment) => {
+        err ? reject(err) : resolve(payment);
+      });
+    });
+
+    // Extract metadata from payment
+    const custom = JSON.parse(payment.transactions[0].custom);
+    
+    // Create booking
+    const booking = await pool.query(
+      `INSERT INTO bookings 
+       (user_id, plan_id, paypal_transaction_id, amount, status)
+       VALUES ($1, $2, $3, $4, 'paid')
+       RETURNING *`,
+      [
+        custom.user_id,
+        custom.plan_id,
+        paymentId,
+        payment.transactions[0].amount.total
+      ]
+    );
+
+    res.json({ 
+      success: true, 
+      booking: booking.rows[0],
+      payment_details: payment 
+    });
+
+  } catch (err) {
+    console.error("💥 Payment processing failed:", err);
+    res.status(500).json({ 
+      error: "Payment processing failed",
+      details: err.response?.details || err.message 
+    });
+>>>>>>> nice
   }
 });
 
