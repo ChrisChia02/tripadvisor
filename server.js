@@ -218,13 +218,14 @@ app.get("/api/bookings", async (req, res) => {
     const result = await pool.query(
       `SELECT 
         b.id, 
-        p.name AS plan_name, 
+        COALESCE(p.name, 'Quick Booking') AS plan_name,
         b.amount, 
         b.status, 
         b.booked_at
        FROM bookings b
-       LEFT JOIN plans p ON b.plan_id = p.id
-       WHERE b.user_id = $1`,
+       LEFT JOIN plans p ON b.plan_id = p.plan_id
+       WHERE b.user_id = $1
+       ORDER BY b.booked_at DESC`,
       [req.query.user_id]
     );
     res.json(result.rows);
@@ -307,11 +308,17 @@ app.get("/success", async (req, res) => {
       ]
     );
 
-    res.json({
-      success: true,
-      booking: booking.rows[0],
-      payment_details: payment
-    });
+    res.send(`
+  <html>
+    <head><title>Payment Successful</title></head>
+    <body style="font-family: Arial; text-align: center; margin-top: 50px;">
+      <h1>🎉 Payment Successful!</h1>
+      <p>Thank you for your booking!</p>
+      <p>You may close this window and return to the app.</p>
+    </body>
+  </html>
+`);
+
 
   } catch (err) {
     console.error("💥 Payment processing failed:", err);
