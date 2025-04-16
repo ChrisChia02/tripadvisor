@@ -16,6 +16,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:provider/provider.dart';
 import 'auth_services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:add_2_calendar/add_2_calendar.dart';
 
 class Destination {
   final String name;
@@ -2196,6 +2197,70 @@ class _HotelsPageState extends State<HotelsPage> {
       SnackBar(
         content: Text('Booking confirmed at ${hotel.name}!'),
         backgroundColor: Colors.green,
+      ),
+    );
+  }
+}
+
+class BookingSuccessScreen extends StatefulWidget {
+  final String userId;
+  const BookingSuccessScreen({super.key, required this.userId});
+
+  @override
+  State<BookingSuccessScreen> createState() => _BookingSuccessScreenState();
+}
+
+class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
+  String? placeName;
+  DateTime? bookedAt;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchBookingAndAddToCalendar();
+  }
+
+  Future<void> _fetchBookingAndAddToCalendar() async {
+    try {
+      final res = await http.get(
+        Uri.parse("https://tripadvisor-hgg4.onrender.com/latest-booking/${widget.userId}"),
+      );
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        placeName = data["place_name"] ?? "Hotel Booking";
+        bookedAt = DateTime.parse(data["booked_at"]);
+
+        _addToCalendar(placeName!, bookedAt!);
+      } else {
+        debugPrint("Failed to get booking: ${res.body}");
+      }
+    } catch (e) {
+      debugPrint("Error: $e");
+    }
+  }
+
+  void _addToCalendar(String placeName, DateTime date) {
+    final event = Event(
+      title: 'Booking at $placeName',
+      description: 'Your hotel booking reminder.',
+      location: placeName,
+      startDate: date,
+      endDate: date.add(const Duration(hours: 1)),
+      allDay: false,
+    );
+
+    Add2Calendar.addEvent2Cal(event);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Booking Success")),
+      body: Center(
+        child: placeName == null
+            ? const CircularProgressIndicator()
+            : Text("🎉 Booking at $placeName added to calendar!"),
       ),
     );
   }

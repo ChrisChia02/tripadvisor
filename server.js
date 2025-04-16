@@ -235,6 +235,23 @@ app.get("/api/bookings", async (req, res) => {
   }
 });
 
+app.get("/latest-booking/:user_id", async (req, res) => {
+  const userId = req.params.user_id;
+  try {
+    const result = await pool.query(
+      `SELECT * FROM bookings WHERE user_id = $1 ORDER BY booked_at DESC LIMIT 1`,
+      [userId]
+    );
+    if (result.rows.length > 0) {
+      res.json(result.rows[0]);
+    } else {
+      res.status(404).json({ message: "No bookings yet" });
+    }
+  } catch (err) {
+    res.status(500).json({ error: "DB error", details: err });
+  }
+});
+
 // 6️⃣ ================== PAYPAL ==================
 // Fixed PayPal config (use template literals)
 paypal.configure({
