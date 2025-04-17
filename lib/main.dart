@@ -4023,7 +4023,14 @@ class _ProfilePageState extends State<ProfilePage> {
                 backgroundColor: Color(0xFF5856D6),
                 minimumSize: Size(double.infinity, 50),
               ),
-              onPressed: () => FirebaseAuth.instance.signOut(),
+              onPressed: () async {
+                await FirebaseAuth.instance.signOut();
+
+                // Navigate to login screen and clear navigation stack
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(builder: (context) => LoginPage()),
+                );
+              },
               child: Text("Log Out", style: TextStyle(fontSize: 18, color: Colors.white)),
             ),
           ),
