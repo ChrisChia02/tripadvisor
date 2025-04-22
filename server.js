@@ -262,13 +262,13 @@ paypal.configure({
 
 // ✅ Route to Create Payment
 app.post("/pay", (req, res) => {
-  const { amount } = req.body; // Use dynamic amount from request
+  const { amount } = req.body;
 
   const paymentJson = {
     intent: "sale",
     payer: { payment_method: "paypal" },
     redirect_urls: {
-      return_url: `http://${req.headers.host}/success`, // Dynamic host
+      return_url: `http://${req.headers.host}/success`,
       cancel_url: `http://${req.headers.host}/cancel`
     },
     transactions: [{
@@ -278,19 +278,20 @@ app.post("/pay", (req, res) => {
       },
       description: "Trip Booking",
       custom: JSON.stringify({ 
-      user_id: req.body.user_id,
-      place_name: req.body.place_name,
-      place_lat: req.body.place_lat,
-      place_lng: req.body.place_lng,
-   }),
+        user_id: req.body.user_id,
+        place_name: req.body.place_name,
+        place_lat: req.body.place_lat,
+        place_lng: req.body.place_lng,
+      })
+    }]
   };
 
   paypal.payment.create(paymentJson, (error, payment) => {
     if (error) {
-      console.error("PayPal Error:", error.response || error); // Log full error
-      res.status(500).json({ 
-        error: "Payment failed", 
-        details: error.response?.details || error.message 
+      console.error("PayPal Error:", error.response || error);
+      res.status(500).json({
+        error: "Payment failed",
+        details: error.response?.details || error.message
       });
     } else {
       const approvalUrl = payment.links.find(link => link.rel === "approval_url").href;
@@ -325,7 +326,7 @@ app.get("/success", async (req, res) => {
     const booking = await pool.query(
   `INSERT INTO bookings 
    (user_id, paypal_transaction_id, amount, status, place_name, place_lat, place_lng)
-   VALUES ($1, $2, $3, 'paid', $4, $5, $6, $7)
+   VALUES ($1, $2, $3, 'paid', $4, $5, $6)
    RETURNING *`,
   [
     user_id,
