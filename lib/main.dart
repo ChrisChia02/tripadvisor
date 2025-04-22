@@ -46,8 +46,8 @@ class PointOfInterest {
   final String? location; // Make nullable
   final String? imageUrl; // Make nullable
   final String thumbnail;
-  final double? latitude; // Make nullable
-  final double? longitude; // Make nullable
+  final double lat;
+  final double lng;
 
   PointOfInterest({
     required this.id,
@@ -59,8 +59,8 @@ class PointOfInterest {
     this.location,
     this.imageUrl,
     required this.thumbnail,
-    this.latitude,
-    this.longitude,
+    required this.lat,
+    required this.lng,
   });
 }
 
@@ -2082,7 +2082,12 @@ class _HotelsPageState extends State<HotelsPage> {
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          onPressed: () => _startPayment(context), // Call payment function
+                          onPressed: () => _startPayment(
+                              context,
+                              placeName: hotel.name,
+                              placeLat: hotel.lat,
+                              placeLng: hotel.lng,
+                            ), // Call payment function
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Color(0xFF628EFF),
                             foregroundColor: Colors.white,
@@ -2092,7 +2097,7 @@ class _HotelsPageState extends State<HotelsPage> {
                             ),
                           ),
                           child: Text(
-                            "Book Now (RM 99.00)", // 🔹 Fixed amount displayed
+                            "Book Now",
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -2111,7 +2116,11 @@ class _HotelsPageState extends State<HotelsPage> {
     );
   }
 
-  Future<void> _startPayment(BuildContext context) async {
+  Future<void> _startPayment(BuildContext context, {
+  required String placeName,
+  required double placeLat,
+  required double placeLng
+}) async {
   final user = FirebaseAuth.instance.currentUser;
 
   // Case 1: Guest or not logged in
@@ -2136,6 +2145,9 @@ class _HotelsPageState extends State<HotelsPage> {
         'plan_id': null,
         'amount': 198.00,
         'plan_name': 'Premium Plan',
+        'place_name': placeName,  
+        'place_lat': placeLat,    
+        'place_lng': placeLng     
       }),
     );
 
@@ -2844,8 +2856,8 @@ class _AttractionsPageState extends State<AttractionsPage> {
         location: enhancedAttraction.location ?? widget.destination,
         imageUrl: imageUrl,
         thumbnail: thumbnail, // Include the required thumbnail parameter
-        latitude: enhancedAttraction.latitude,
-        longitude: enhancedAttraction.longitude,
+        lat: enhancedAttraction.lat,
+        lng: enhancedAttraction.lng,
       ));
     }
     
@@ -2921,8 +2933,8 @@ class _AttractionsPageState extends State<AttractionsPage> {
         location: attraction.location,
         imageUrl: imageUrl,
         thumbnail: attraction.thumbnail, // Include the required thumbnail parameter
-        latitude: attraction.latitude,
-        longitude: attraction.longitude,
+        lat: attraction.lat,
+        lng: attraction.lng,
       );
     }
   } catch (e) {
@@ -3423,7 +3435,7 @@ class DestinationService {
   Future<PlaceDetails> _getPlaceDetails(String placeName) async {
     // First, get the place ID from the name
     final findPlaceUrl = Uri.parse(
-      'https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=$placeName&inputtype=textquery&fields=place_id,name,formatted_address,photos&key=$apiKey'
+      'https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=$placeName&inputtype=textquery&fields=place_id,name,formatted_address,photos,geometry&key=$apiKey'
     );
     
     final findPlaceResponse = await http.get(findPlaceUrl);
@@ -3437,11 +3449,15 @@ class DestinationService {
     
     // Now get detailed information about the place
     final detailsUrl = Uri.parse(
-      'https://maps.googleapis.com/maps/api/place/details/json?place_id=$placeId&fields=name,formatted_address,photos,rating,user_ratings_total&key=$apiKey'
+      'https://maps.googleapis.com/maps/api/place/details/json?place_id=$placeId&fields=name,formatted_address,photos,rating,user_ratings_total,geometry&key=$apiKey'
     );
     
     final detailsResponse = await http.get(detailsUrl);
     final detailsData = json.decode(detailsResponse.body);
+
+    final location = detailsData['result']['geometry']['location'];
+    final lat = location['lat'];
+    final lng = location['lng'];
     
     if (detailsData['status'] != 'OK') {
       throw Exception('Could not fetch place details');
@@ -3470,6 +3486,8 @@ class DestinationService {
       images: photoUrls,
       rating: result.containsKey('rating') ? result['rating'].toDouble() : 0.0,
       reviewCount: result.containsKey('user_ratings_total') ? result['user_ratings_total'] : 0,
+      lat: location['lat'],  // Add this
+      lng: location['lng'],  // Add this
     );
   }
 
@@ -3522,6 +3540,8 @@ class DestinationService {
         rating: place.containsKey('rating') ? place['rating'].toDouble() : 0.0,
         reviewCount: place.containsKey('user_ratings_total') ? place['user_ratings_total'] : 0,
         thumbnail: photoUrl,
+        lat: place['geometry']['location']['lat'], 
+        lng: place['geometry']['location']['lng'],  
       ));
     }
     
@@ -3536,6 +3556,8 @@ class PlaceDetails {
   final List<String> images;
   final double rating;
   final int reviewCount;
+  final double lat;  
+  final double lng;  
   
   PlaceDetails({
     required this.placeId,
@@ -3544,6 +3566,8 @@ class PlaceDetails {
     required this.images,
     required this.rating,
     required this.reviewCount,
+    required this.lat,  
+    required this.lng, 
   });
 }
 

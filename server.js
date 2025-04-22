@@ -278,9 +278,12 @@ app.post("/pay", (req, res) => {
       },
       description: "Trip Booking",
       custom: JSON.stringify({ 
-        user_id: req.body.user_id, 
-      }) // 👈 include custom metadata
-    }],
+      user_id: req.body.user_id,
+      plan_id: req.body.plan_id || null,
+      place_name: req.body.place_name,
+      place_lat: req.body.place_lat,
+      place_lng: req.body.place_lng,
+   }),
   };
 
   paypal.payment.create(paymentJson, (error, payment) => {
@@ -312,18 +315,30 @@ app.get("/success", async (req, res) => {
     const custom = JSON.parse(payment.transactions[0].custom);
     const userId = custom.user_id;
 
+	const {
+  	 user_id,
+  	 plan_id,
+  	 place_name,
+  	 place_lat,
+  	 place_lng
+	} = custom;
+
     // ✅ Insert booking (no plan_id)
     const booking = await pool.query(
-      `INSERT INTO bookings 
-       (user_id, paypal_transaction_id, amount, status)
-       VALUES ($1, $2, $3, 'paid')
-       RETURNING *`,
-      [
-        userId,
-        paymentId,
-        payment.transactions[0].amount.total
-      ]
-    );
+  `INSERT INTO bookings 
+   (user_id, paypal_transaction_id, amount, status, plan_id, place_name, place_lat, place_lng)
+   VALUES ($1, $2, $3, 'paid', $4, $5, $6, $7)
+   RETURNING *`,
+  [
+    user_id,
+    paymentId,
+    payment.transactions[0].amount.total,
+    plan_id,
+    place_name,
+    place_lat,
+    place_lng
+  ]
+);
 
     res.send(`
   <html>
