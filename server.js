@@ -279,7 +279,6 @@ app.post("/pay", (req, res) => {
       description: "Trip Booking",
       custom: JSON.stringify({ 
       user_id: req.body.user_id,
-      plan_id: req.body.plan_id || null,
       place_name: req.body.place_name,
       place_lat: req.body.place_lat,
       place_lng: req.body.place_lng,
@@ -317,7 +316,6 @@ app.get("/success", async (req, res) => {
 
 	const {
   	 user_id,
-  	 plan_id,
   	 place_name,
   	 place_lat,
   	 place_lng
@@ -326,14 +324,13 @@ app.get("/success", async (req, res) => {
     // ✅ Insert booking (no plan_id)
     const booking = await pool.query(
   `INSERT INTO bookings 
-   (user_id, paypal_transaction_id, amount, status, plan_id, place_name, place_lat, place_lng)
+   (user_id, paypal_transaction_id, amount, status, place_name, place_lat, place_lng)
    VALUES ($1, $2, $3, 'paid', $4, $5, $6, $7)
    RETURNING *`,
   [
     user_id,
     paymentId,
     payment.transactions[0].amount.total,
-    plan_id,
     place_name,
     place_lat,
     place_lng
