@@ -17,6 +17,11 @@ import 'package:provider/provider.dart';
 import 'auth_services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:add_2_calendar/add_2_calendar.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tripadvisor/mongodb.dart';
+import 'database_helper.dart';
+import 'mongodb.dart';
+import 'package:intl/intl.dart';
 
 class Destination {
   final String name;
@@ -915,7 +920,7 @@ void initState() {
           ? _buildSearchResultsContent() 
           : HomeContent(recentSearches: _recentSearches),  // Pass recent searches here
       PlanPage(),
-      TripPage(),
+      SampleTripsPage(),
       ProfilePage(userId: userId!),
     ];
 
@@ -1727,6 +1732,17 @@ class _HotelsPageState extends State<HotelsPage> {
                                       ),
                                       SizedBox(width: 8),
                                       Text('(${hotel.reviewCount} reviews)'),
+
+                                      Spacer(),
+                                        SaveButton(
+                                          placeId: hotel.id,
+                                          placeName: hotel.name,
+                                          placeType: 'hotel',
+                                          destination: widget.destination,
+                                          imageUrl: hotel.thumbnail,
+                                          rating: hotel.rating,
+                                          reviewCount: hotel.reviewCount,
+                                        ),
                                     ],
                                   ),
                                   SizedBox(height: 12),
@@ -2494,6 +2510,17 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
                                           fontSize: 14,
                                         ),
                                       ),
+                                      Spacer(),
+
+                                        SaveButton(
+                                          placeId: restaurant.id,
+                                          placeName: restaurant.name,
+                                          placeType: 'restaurant',
+                                          destination: widget.destination,
+                                          imageUrl: restaurant.thumbnail,
+                                          rating: restaurant.rating,
+                                          reviewCount: restaurant.reviewCount,
+                                        ),
                                     ],
                                   ),
                                   SizedBox(height: 16),
@@ -3236,6 +3263,16 @@ class _AttractionsPageState extends State<AttractionsPage> {
                             ),
                           ),
                         ),
+                        Spacer(),
+                        SaveButton(
+                          placeId: attraction.id,
+                          placeName: attraction.name,
+                          placeType: 'attraction',
+                          destination: widget.destination,
+                          imageUrl: attraction.imageUrl,
+                          rating: attraction.rating,
+                          reviewCount: attraction.reviewCount,
+                        ),
                       ],
                     ),
                     SizedBox(height: 16),
@@ -3707,51 +3744,6 @@ class _HomeContentState extends State<HomeContent> {
   }
 }
 
-class PlanPage extends StatefulWidget {
-  @override
-  _PlanPageState createState() => _PlanPageState();
-}
-
-class _PlanPageState extends State<PlanPage> {
-  bool _hasCreatedTrip = false; // Track if at least one trip is created
-
-  void _createTrip() {
-    setState(() {
-      _hasCreatedTrip = true; // Enable the AI trip button after creating a trip
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Color(0xFF5856D6),
-                minimumSize: Size(250, 50),
-              ),
-              onPressed: _createTrip, // Enables AI button after clicking
-              child: Text("Create a trip +", style: TextStyle(color: Colors.white, fontSize: 16)),
-            ),
-            SizedBox(height: 20),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Color(0xFF5856D6),
-                minimumSize: Size(250, 50),
-              ),
-              onPressed: _hasCreatedTrip ? () {} : null, // Disabled if no trip is created
-              child: Text("Build a trip with AI", style: TextStyle(color: Colors.white, fontSize: 16)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class TripPage extends StatefulWidget {
   @override
   _TripPageState createState() => _TripPageState();
@@ -3760,7 +3752,7 @@ class TripPage extends StatefulWidget {
 class _TripPageState extends State<TripPage> {
   final TextEditingController _tripNameController = TextEditingController();
 
-  void _navigateToTripDetails(String tripName) {
+  void _navigateToTripDetails(String tripName) async {
     if (tripName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a trip name!')),
@@ -3768,12 +3760,34 @@ class _TripPageState extends State<TripPage> {
       return;
     }
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => TripDetailsPage(tripName: tripName),
-      ),
-    );
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      // Save the basic trip first
+      await MongoDatabase.saveTrip(user.uid, {
+        'name': tripName,
+        'createdAt': DateTime.now(),
+        'itinerary': [],
+      });
+
+      // Then navigate to details page and wait for result
+      final shouldRefresh = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => TripDetailsPage(tripName: tripName),
+        ),
+      );
+
+      // If we got a refresh flag, pop back to PlanPage
+      if (shouldRefresh == true && mounted) {
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to create trip: $e')));
+    }
   }
 
   @override
@@ -3810,7 +3824,10 @@ class _TripPageState extends State<TripPage> {
                 backgroundColor: const Color(0xFF5856D6),
                 minimumSize: const Size(double.infinity, 50),
               ),
-              child: const Text('Create a New Trip'),
+              child: const Text(
+                'Create a New Trip',
+                style: TextStyle(color: Colors.white, fontSize: 16),
+              ),
             ),
           ],
         ),
@@ -3825,60 +3842,1199 @@ class _TripPageState extends State<TripPage> {
   }
 }
 
-class TripDetailsPage extends StatelessWidget {
+class TripDetailsPage extends StatefulWidget {
   final String tripName;
+  final Map<String, dynamic>? tripData;
+  const TripDetailsPage({Key? key, required this.tripName, this.tripData})
+    : super(key: key);
 
-  const TripDetailsPage({Key? key, required this.tripName}) : super(key: key);
+  @override
+  _TripDetailsPageState createState() => _TripDetailsPageState();
+}
+
+class _TripDetailsPageState extends State<TripDetailsPage> {
+  late String _currentTripName;
+  final TextEditingController _tripNameController = TextEditingController();
+  bool _isEditing = false;
+  File? _tripImage;
+  int _selectedTabIndex = 0;
+  List<SavedPlace> _tripPlaces = [];
+  List<ItineraryItem> _itineraryItems = [];
+  String? userId;
+  List<SavedPlace> _hotels = [];
+  List<SavedPlace> _restaurants = [];
+  List<SavedPlace> _attractions = [];
+  List<PointOfInterest> _recommendedPlaces = [];
+  bool _isLoadingRecommendations = false;
+  String? _tripId; // Add this to track MongoDB trip ID
+  bool _isSaving = false;
+  bool _isLoading = false;
+  String? _selectedImage;
+  bool _isImagePickerOpen = false;
+  TripPictureType _selectedPicture = TripPictureType.none;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentTripName = widget.tripName;
+    _tripNameController.text = _currentTripName;
+    userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId != null) {
+      _loadTripPlaces(); // Add this method
+    }
+    _loadTripData();
+    if (widget.tripData?['pictureType'] != null) {
+      _selectedPicture = TripPictureType.values.firstWhere(
+        (e) => e.toString() == widget.tripData!['pictureType'],
+        orElse: () => TripPictureType.none,
+      );
+    }
+  }
+
+  Future<void> _showImagePicker() async {
+    if (_isImagePickerOpen) return;
+    _isImagePickerOpen = true;
+
+    await showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Text('Select Trip Picture'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: GridView.builder(
+                shrinkWrap: true,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
+                ),
+                itemCount: TripPictureType.values.length - 1, // exclude 'none'
+                itemBuilder: (context, index) {
+                  final pictureType = TripPictureType.values[index];
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() => _selectedPicture = pictureType);
+                      Navigator.pop(context);
+                    },
+                    child: Stack(
+                      children: [
+                        Image.asset(
+                          pictureType.assetPath,
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          height: double.infinity,
+                        ),
+                        if (_selectedPicture == pictureType)
+                          Positioned(
+                            right: 4,
+                            top: 4,
+                            child: Icon(
+                              Icons.check_circle,
+                              color: Colors.green,
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Cancel'),
+              ),
+            ],
+          ),
+    );
+    _isImagePickerOpen = false;
+  }
+
+  Future<void> _loadTripData() async {
+    if (userId == null) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final trips = await MongoDatabase.getUserTrips(userId!);
+      final existingTrip = trips.firstWhere(
+        (trip) => trip['name'] == widget.tripName,
+        orElse: () => {},
+      );
+
+      if (existingTrip.isNotEmpty) {
+        setState(() {
+          // Handle both String and ObjectId cases
+          _tripId =
+              existingTrip['_id']?.toString() ?? existingTrip['_id']?.$oid;
+          _itineraryItems =
+              (existingTrip['itinerary'] as List?)
+                  ?.map((item) => ItineraryItem.fromMap(item))
+                  ?.toList() ??
+              [];
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error loading trip: ${e.toString()}')),
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _saveTrip() async {
+    if (userId == null) return;
+
+    setState(() => _isSaving = true);
+
+    try {
+      final tripData = {
+        'name': _currentTripName,
+        'pictureType': _selectedPicture.toString(),
+        'itinerary': _itineraryItems.map((item) => item.toMap()).toList(),
+        'updatedAt': DateTime.now(),
+      };
+
+      if (_tripId == null) {
+        await MongoDatabase.saveTrip(userId!, tripData);
+      } else {
+        await MongoDatabase.updateTrip(_tripId!, tripData);
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Trip saved successfully')));
+      Navigator.pop(context, true);
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to save trip: $e')));
+    } finally {
+      setState(() => _isSaving = false);
+    }
+  }
+
+  Map<DateTime, List<ItineraryItem>> get groupedItineraryItems {
+    final map = <DateTime, List<ItineraryItem>>{};
+
+    for (final item in _itineraryItems) {
+      // Normalize date by removing time component
+      final date = DateTime(item.date.year, item.date.month, item.date.day);
+      if (!map.containsKey(date)) {
+        map[date] = [];
+      }
+      map[date]!.add(item);
+    }
+
+    // Sort each day's items by arrival time
+    map.forEach((date, items) {
+      items.sort((a, b) => a.arrivalTime.hour.compareTo(b.arrivalTime.hour));
+    });
+
+    return map;
+  }
+
+  List<DateTime> get sortedDates {
+    return groupedItineraryItems.keys.toList()..sort();
+  }
+
+  Future<void> _loadTripPlaces() async {
+    try {
+      // Load places from MongoDB for this user
+      final places = await MongoDatabase.getSavedPlaces(userId!);
+
+      // Categorize the places by type
+      final categorizedPlaces = _categorizePlaces(
+        places.map((place) => SavedPlace.fromMap(place)).toList(),
+      );
+
+      setState(() {
+        _hotels = categorizedPlaces['hotels'] ?? [];
+        _restaurants = categorizedPlaces['restaurants'] ?? [];
+        _attractions = categorizedPlaces['attractions'] ?? [];
+      });
+    } catch (e) {
+      print('Error loading trip places: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to load saved places')));
+    }
+  }
+
+  Map<String, List<SavedPlace>> _categorizePlaces(List<SavedPlace> places) {
+    final Map<String, List<SavedPlace>> categorized = {
+      'hotels': [],
+      'restaurants': [],
+      'attractions': [],
+    };
+
+    for (final place in places) {
+      switch (place.type) {
+        case 'hotel':
+          categorized['hotels']!.add(place);
+          break;
+        case 'restaurant':
+          categorized['restaurants']!.add(place);
+          break;
+        case 'attraction':
+          categorized['attractions']!.add(place);
+          break;
+        default:
+          // Handle unexpected types if needed
+          break;
+      }
+    }
+
+    return categorized;
+  }
+
+  Future<void> _pickImage() async {
+    final pickedFile = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+    );
+    if (pickedFile != null) {
+      setState(() {
+        _tripImage = File(pickedFile.path);
+      });
+    }
+  }
+
+  void _toggleEditMode() {
+    setState(() {
+      _isEditing = !_isEditing;
+      if (!_isEditing) {
+        _currentTripName = _tripNameController.text;
+      }
+    });
+  }
+
+  void _addToItinerary(SavedPlace place) {
+    final parentContext = context; // Save the parent context
+
+    showDialog(
+      context: parentContext,
+      builder: (dialogContext) {
+        return AddToItineraryDialog(
+          place: place,
+          onAdd: (date, time, notes) {
+            setState(() {
+              _itineraryItems.add(
+                ItineraryItem(
+                  place: place,
+                  date: date,
+                  arrivalTime: time,
+                  notes: notes,
+                ),
+              );
+            });
+            Navigator.pop(dialogContext);
+            ScaffoldMessenger.of(parentContext).showSnackBar(
+              SnackBar(content: Text('Added ${place.name} to itinerary')),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _reorderItinerary(int oldIndex, int newIndex) {
+    setState(() {
+      if (oldIndex < newIndex) {
+        newIndex -= 1;
+      }
+      final item = _itineraryItems.removeAt(oldIndex);
+      _itineraryItems.insert(newIndex, item);
+    });
+  }
+
+  Future<void> _editTrip() async {
+    if (_tripId == null) return;
+
+    final newName = await Navigator.push<String?>(
+      context,
+      MaterialPageRoute(
+        builder:
+            (context) => EditTripPage(
+              tripId: _tripId!,
+              currentName: _currentTripName,
+              onSave: _updateTripName,
+              onDelete: _deleteTrip,
+            ),
+      ),
+    );
+
+    if (newName != null && mounted) {
+      setState(() {
+        _currentTripName = newName;
+        _tripNameController.text = newName;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Trip name updated')));
+    }
+  }
+
+  Future<String> _updateTripName(String newName) async {
+    try {
+      await MongoDatabase.updateTrip(_tripId!, {
+        'name': newName,
+        'updatedAt': DateTime.now(),
+      });
+      return newName;
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to update trip name: $e')));
+      throw e;
+    }
+  }
+
+  Future<void> _deleteTrip() async {
+    try {
+      await MongoDatabase.deleteTrip(_tripId!);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Trip deleted')));
+      Navigator.pop(context); // Return to previous screen
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to delete trip: $e')));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Create a Trip'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit),
-            onPressed: () {},
-          ),
+    return WillPopScope(
+      onWillPop: () async {
+        Navigator.pop(context, true); // Return true to indicate refresh needed
+        return false;
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Trip Details'),
+          backgroundColor: Color(0xFF628EFF),
+          actions: [
+            IconButton(icon: Icon(Icons.edit), onPressed: _editTrip),
+            IconButton(
+              icon:
+                  _isSaving
+                      ? CircularProgressIndicator(color: Colors.white)
+                      : Icon(Icons.save),
+              onPressed: _isSaving ? null : _saveTrip,
+            ),
+          ],
+        ),
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Image placeholder
+            GestureDetector(
+              onTap: _showImagePicker,
+              child: Container(
+                height: 200,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+                ),
+                child:
+                    _selectedImage != TripPictureType.none
+                        ? Image.asset(
+                          _selectedPicture.assetPath,
+                          fit: BoxFit.cover,
+                        )
+                        : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.add_photo_alternate, size: 50),
+                            Text('Select Trip Picture'),
+                          ],
+                        ),
+              ),
+            ),
+
+            // Trip name section
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24.0, 16.0, 24.0, 0),
+              child:
+                  _isEditing
+                      ? TextField(
+                        controller: _tripNameController,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        decoration: const InputDecoration(
+                          hintText: 'Unnamed Trip',
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      )
+                      : Text(
+                        _currentTripName,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+            ),
+
+            // Tab bar
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16.0,
+                vertical: 8.0,
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildTabButton(
+                    0,
+                    'Places (${_hotels.length + _restaurants.length + _attractions.length})',
+                  ),
+                  _buildTabButton(1, 'Itinerary (${_itineraryItems.length})'),
+                  _buildTabButton(2, 'Recommend'),
+                ],
+              ),
+            ),
+            Divider(height: 1),
+
+            // Tab content
+            Expanded(
+              child: IndexedStack(
+                index: _selectedTabIndex,
+                children: [
+                  // Places tab
+                  _buildPlacesTab(),
+
+                  // Itinerary tab
+                  _buildItineraryTab(),
+
+                  // Recommend tab
+                  _buildRecommendTab(),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabButton(int index, String title) {
+    return TextButton(
+      onPressed: () => setState(() => _selectedTabIndex = index),
+      style: TextButton.styleFrom(
+        foregroundColor:
+            _selectedTabIndex == index ? Color(0xFF628EFF) : Colors.grey,
+      ),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontWeight:
+              _selectedTabIndex == index ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlacesTab() {
+    final allPlaces = [..._hotels, ..._restaurants, ..._attractions];
+
+    if (allPlaces.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.bookmark_border, size: 64, color: Colors.grey),
+            SizedBox(height: 16),
+            Text(
+              'No places saved yet',
+              style: TextStyle(fontSize: 18, color: Colors.grey),
+            ),
+            Text(
+              'Save hotels, restaurants and attractions to see them here',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey),
+            ),
+            SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => SavedPlacesPage()),
+                ).then((_) => _loadTripPlaces()); // Refresh after returning
+              },
+              child: Text('View Saved Places'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_hotels.isNotEmpty) _buildCategorySection('Hotels', _hotels),
+          if (_restaurants.isNotEmpty)
+            _buildCategorySection('Restaurants', _restaurants),
+          if (_attractions.isNotEmpty)
+            _buildCategorySection('Attractions', _attractions),
         ],
       ),
-      body: Column(
-        children: [
-          Container(
-            height: 200,
-            color: Colors.grey[300],
-            child: const Icon(Icons.image, size: 100),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  tripName,
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: const [
-                    Text('Places saved (0)'),
-                    Text('Itinerary'),
-                    Text('Recommend'),
-                  ],
-                ),
-                const Divider(),
-                const ListTile(title: Text('Things to Do (0)')),
-                const ListTile(title: Text('Food (0)')),
-                const ListTile(title: Text('Stay (0)')),
-              ],
+    );
+  }
+
+  Widget _buildCategorySection(String title, List<SavedPlace> places) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Text(
+            title,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.blue,
             ),
           ),
-        ],
+        ),
+        ListView.builder(
+          physics: NeverScrollableScrollPhysics(),
+          shrinkWrap: true,
+          itemCount: places.length,
+          itemBuilder: (context, index) {
+            final place = places[index];
+            return Card(
+              margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: ListTile(
+                leading:
+                    place.imageUrl != null
+                        ? ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.network(
+                            place.imageUrl!,
+                            width: 50,
+                            height: 50,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Icon(Icons.place, size: 50);
+                            },
+                          ),
+                        )
+                        : Icon(Icons.place, size: 50),
+                title: Text(place.name),
+                subtitle: Text('${place.destination}'),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.add),
+                      onPressed: () => _addToItinerary(place),
+                    ),
+                    SaveButton(
+                      placeId: place.id,
+                      placeName: place.name,
+                      placeType: place.type,
+                      destination: place.destination,
+                      imageUrl: place.imageUrl,
+                      rating: place.rating,
+                      reviewCount: place.reviewCount,
+                      onChanged: _loadTripPlaces,
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildItineraryTab() {
+    if (_itineraryItems.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.calendar_today, size: 64, color: Colors.grey),
+            SizedBox(height: 16),
+            Text(
+              'No itinerary items yet',
+              style: TextStyle(fontSize: 18, color: Colors.grey),
+            ),
+            Text(
+              'Add places from your saved places to create an itinerary',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: EdgeInsets.all(16),
+      itemCount: sortedDates.length,
+      itemBuilder: (context, dateIndex) {
+        final date = sortedDates[dateIndex];
+        final items = groupedItineraryItems[date]!;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Date header
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: Text(
+                DateFormat('EEEE, MMMM d').format(date),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue,
+                ),
+              ),
+            ),
+
+            // Items for this date
+            ReorderableListView.builder(
+              shrinkWrap: true,
+              physics: NeverScrollableScrollPhysics(),
+              itemCount: items.length,
+              onReorder: (oldIndex, newIndex) {
+                _reorderItineraryItem(date, oldIndex, newIndex);
+              },
+              itemBuilder: (context, itemIndex) {
+                final item = items[itemIndex];
+                return Card(
+                  key: Key('${item.place.id}-${item.date}-${item.arrivalTime}'),
+                  margin: EdgeInsets.only(bottom: 8),
+                  child: ListTile(
+                    leading:
+                        item.place.imageUrl != null
+                            ? ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.network(
+                                item.place.imageUrl!,
+                                width: 50,
+                                height: 50,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Icon(Icons.place, size: 50);
+                                },
+                              ),
+                            )
+                            : Icon(Icons.place, size: 50),
+                    title: Text(item.place.name),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Arrival: ${item.arrivalTime.format(context)}'),
+                        if (item.notes != null && item.notes!.isNotEmpty)
+                          Text(
+                            'Notes: ${item.notes!}',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                      ],
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: Icon(Icons.edit),
+                          onPressed: () => _editItineraryItem(item),
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.delete, color: Colors.red),
+                          onPressed: () => _removeItineraryItem(item),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+            Divider(),
+          ],
+        );
+      },
+    );
+  }
+
+  void _reorderItineraryItem(DateTime date, int oldIndex, int newIndex) {
+    setState(() {
+      final items = groupedItineraryItems[date]!;
+      if (oldIndex < newIndex) {
+        newIndex -= 1;
+      }
+      final item = items.removeAt(oldIndex);
+      items.insert(newIndex, item);
+
+      // Update the main list
+      _itineraryItems =
+          groupedItineraryItems.values.expand((items) => items).toList();
+    });
+  }
+
+  void _removeItineraryItem(ItineraryItem item) {
+    setState(() {
+      _itineraryItems.remove(item);
+    });
+  }
+
+  void _editItineraryItem(ItineraryItem item) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AddToItineraryDialog(
+            place: item.place,
+            initialDate: item.date,
+            initialTime: item.arrivalTime,
+            initialNotes: item.notes,
+            onAdd: (date, time, notes) {
+              setState(() {
+                _itineraryItems.remove(item);
+                _itineraryItems.add(
+                  ItineraryItem(
+                    place: item.place,
+                    date: date,
+                    arrivalTime: time,
+                    notes: notes,
+                  ),
+                );
+              });
+              Navigator.pop(context);
+            },
+          ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
+  String _formatTime(TimeOfDay time) {
+    return '${time.hour}:${time.minute.toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildRecommendTab() {
+    if (_isLoadingRecommendations) {
+      return Center(child: CircularProgressIndicator());
+    }
+
+    if (_recommendedPlaces.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.auto_awesome, size: 64, color: Colors.grey),
+            SizedBox(height: 16),
+            Text(
+              'Get recommendations',
+              style: TextStyle(fontSize: 18, color: Colors.grey),
+            ),
+            Text(
+              'Discover great places to add to your trip',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey),
+            ),
+            SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: _fetchRecommendations,
+              child: Text('Get Recommendations'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Recommended Places',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.refresh),
+                onPressed: _fetchRecommendations,
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            itemCount: _recommendedPlaces.length,
+            itemBuilder: (context, index) {
+              final place = _recommendedPlaces[index];
+              return Card(
+                margin: EdgeInsets.only(bottom: 16),
+                child: ListTile(
+                  leading:
+                      place.thumbnail.isNotEmpty
+                          ? ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.network(
+                              place.thumbnail,
+                              width: 50,
+                              height: 50,
+                              fit: BoxFit.cover,
+                            ),
+                          )
+                          : Icon(Icons.place, size: 50),
+                  title: Text(place.name),
+                  subtitle: Row(
+                    children: [
+                      Icon(Icons.star, size: 16, color: Colors.amber),
+                      Text(' ${place.rating.toStringAsFixed(1)}'),
+                      SizedBox(width: 8),
+                      Text('(${place.reviewCount} reviews)'),
+                    ],
+                  ),
+                  trailing: IconButton(
+                    icon: Icon(Icons.add),
+                    onPressed: () => _addRecommendedToItinerary(place),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Add this method to fetch recommendations
+  Future<void> _fetchRecommendations() async {
+    setState(() => _isLoadingRecommendations = true);
+
+    try {
+      // Get current trip destination (you might need to modify this)
+      final destination = _currentTripName;
+
+      // Fetch recommendations from your backend or API
+      final result = await DestinationService().getDestinationInfo(destination);
+
+      setState(() {
+        // Combine hotels, restaurants and attractions
+        _recommendedPlaces = [
+          ...result.hotels,
+          ...result.restaurants,
+          ...result.attractions,
+        ];
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load recommendations: $e')),
+      );
+    } finally {
+      setState(() => _isLoadingRecommendations = false);
+    }
+  }
+
+  // Add this method to handle adding recommended places
+  void _addRecommendedToItinerary(PointOfInterest place) {
+    // Save the parent context before showing dialog
+    final parentContext = context;
+
+    showDialog(
+      context: parentContext,
+      builder: (dialogContext) {
+        return AddToItineraryDialog(
+          place: SavedPlace(
+            id: place.id,
+            name: place.name,
+            type: _getPlaceType(place),
+            destination: _currentTripName,
+            imageUrl: place.imageUrl ?? place.thumbnail,
+            rating: place.rating,
+            reviewCount: place.reviewCount,
+          ),
+          onAdd: (date, time, notes) {
+            setState(() {
+              _itineraryItems.add(
+                ItineraryItem(
+                  place: SavedPlace(
+                    id: place.id,
+                    name: place.name,
+                    type: _getPlaceType(place),
+                    destination: _currentTripName,
+                    imageUrl: place.imageUrl ?? place.thumbnail,
+                    rating: place.rating,
+                    reviewCount: place.reviewCount,
+                  ),
+                  date: date,
+                  arrivalTime: time,
+                  notes: notes,
+                ),
+              );
+            });
+            Navigator.pop(dialogContext);
+
+            // Use the parentContext which has Scaffold ancestor
+            ScaffoldMessenger.of(parentContext).showSnackBar(
+              SnackBar(content: Text('Added ${place.name} to itinerary')),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _getPlaceType(PointOfInterest place) {
+    if (place is Hotel) return 'hotel';
+    if (place is Restaurant) return 'restaurant';
+    return 'attraction';
+  }
+}
+
+class ItineraryItem {
+  final SavedPlace place;
+  final DateTime date;
+  final TimeOfDay arrivalTime;
+  String? notes;
+
+  ItineraryItem({
+    required this.place,
+    required this.date,
+    required this.arrivalTime,
+    this.notes,
+  });
+
+  // Helper method to combine date and time
+  DateTime get fullDateTime {
+    return DateTime(
+      date.year,
+      date.month,
+      date.day,
+      arrivalTime.hour,
+      arrivalTime.minute,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'place': place.toMap(),
+      'date': date.toIso8601String(),
+      'arrivalTime': '${arrivalTime.hour}:${arrivalTime.minute}',
+      'notes': notes,
+    };
+  }
+
+  factory ItineraryItem.fromMap(Map<String, dynamic> map) {
+    // Default to current time if parsing fails
+    TimeOfDay defaultTime = TimeOfDay.now();
+
+    try {
+      final timeParts = (map['arrivalTime'] as String? ?? '12:00').split(':');
+      return ItineraryItem(
+        place: SavedPlace.fromMap(map['place']),
+        date: DateTime.parse(map['date'] ?? DateTime.now().toIso8601String()),
+        arrivalTime: TimeOfDay(
+          hour: int.tryParse(timeParts[0]) ?? defaultTime.hour,
+          minute: int.tryParse(timeParts[1]) ?? defaultTime.minute,
+        ),
+        notes: map['notes'],
+      );
+    } catch (e) {
+      print('Error parsing itinerary item: $e');
+      return ItineraryItem(
+        place: SavedPlace.fromMap(map['place']),
+        date: DateTime.now(),
+        arrivalTime: defaultTime,
+        notes: map['notes'],
+      );
+    }
+  }
+}
+
+class Hotel extends PointOfInterest {
+  Hotel({
+    required String id,
+    required String name,
+    required double rating,
+    required int reviewCount,
+    required String thumbnail,
+    required double lat,
+    required double lng,
+    String? imageUrl,
+  }) : super(
+         id: id,
+         name: name,
+         rating: rating,
+         reviewCount: reviewCount,
+         thumbnail: thumbnail,
+         imageUrl: imageUrl,
+         lat: lat,
+         lng: lng,
+       );
+}
+
+class Restaurant extends PointOfInterest {
+  Restaurant({
+    required String id,
+    required String name,
+    required double rating,
+    required int reviewCount,
+    required String thumbnail,
+    required double lat,
+    required double lng,
+    String? imageUrl,
+  }) : super(
+         id: id,
+         name: name,
+         rating: rating,
+         reviewCount: reviewCount,
+         thumbnail: thumbnail,
+         imageUrl: imageUrl,
+         lat: lat,
+         lng: lng,
+       );
+}
+
+class Attraction extends PointOfInterest {
+  Attraction({
+    required String id,
+    required String name,
+    required double rating,
+    required int reviewCount,
+    required String thumbnail,
+    required double lat,
+    required double lng,
+    String? imageUrl,
+  }) : super(
+         id: id,
+         name: name,
+         rating: rating,
+         reviewCount: reviewCount,
+         thumbnail: thumbnail,
+         imageUrl: imageUrl,
+         lat: lat,
+         lng: lng,
+       );
+}
+
+class AddToItineraryDialog extends StatefulWidget {
+  final SavedPlace place;
+  final DateTime? initialDate;
+  final TimeOfDay? initialTime;
+  final String? initialNotes;
+  final Function(DateTime date, TimeOfDay time, String? notes) onAdd;
+
+  const AddToItineraryDialog({
+    Key? key,
+    required this.place,
+    this.initialDate,
+    this.initialTime,
+    this.initialNotes,
+    required this.onAdd,
+  }) : super(key: key);
+
+  @override
+  _AddToItineraryDialogState createState() => _AddToItineraryDialogState();
+}
+
+class _AddToItineraryDialogState extends State<AddToItineraryDialog> {
+  late DateTime _selectedDate;
+  late TimeOfDay _selectedTime;
+  late TextEditingController _notesController;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedDate = widget.initialDate ?? DateTime.now();
+    _selectedTime = widget.initialTime ?? TimeOfDay.now();
+    _notesController = TextEditingController(text: widget.initialNotes);
+  }
+
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime.now(),
+      lastDate: DateTime(2101),
+    );
+    if (picked != null && picked != _selectedDate) {
+      setState(() {
+        _selectedDate = picked;
+      });
+    }
+  }
+
+  // Add this method to handle time selection
+  Future<void> _selectTime(BuildContext context) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: _selectedTime,
+    );
+    if (picked != null && picked != _selectedTime) {
+      setState(() {
+        _selectedTime = picked;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Add to Itinerary'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(Icons.calendar_today),
+              title: Text('Date'),
+              subtitle: Text(DateFormat('MMM d, y').format(_selectedDate)),
+              trailing: Icon(Icons.arrow_drop_down),
+              onTap: () => _selectDate(context),
+            ),
+            ListTile(
+              leading: Icon(Icons.access_time),
+              title: Text('Arrival Time'),
+              subtitle: Text(_selectedTime.format(context)),
+              trailing: Icon(Icons.arrow_drop_down),
+              onTap: () => _selectTime(context),
+            ),
+            TextField(
+              controller: _notesController,
+              decoration: InputDecoration(
+                labelText: 'Notes (optional)',
+                icon: Icon(Icons.note),
+              ),
+              maxLines: 2,
+            ),
+          ],
+        ),
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            widget.onAdd(
+              _selectedDate,
+              _selectedTime,
+              _notesController.text.isNotEmpty ? _notesController.text : null,
+            );
+          },
+          child: Text(widget.initialDate == null ? 'Add' : 'Update'),
+        ),
+      ],
     );
   }
 }
@@ -4539,6 +5695,1129 @@ class SupportPage extends StatelessWidget {
       onTap: () {
         // TODO: Navigate to respective pages
       },
+    );
+  }
+}
+
+class SavedPlace {
+  final String id;
+  final String name;
+  final String type;
+  final String destination;
+  final String? imageUrl;
+  final double rating;
+  final int reviewCount;
+  final DateTime? createdAt;
+
+  SavedPlace({
+    required this.id,
+    required this.name,
+    required this.type,
+    required this.destination,
+    this.imageUrl,
+    this.rating = 0.0,
+    this.reviewCount = 0,
+    this.createdAt,
+  });
+
+  factory SavedPlace.fromMap(Map<String, dynamic>? map) {
+    if (map == null) {
+      return SavedPlace(
+        id: 'default_place',
+        name: 'Default Place',
+        type: 'attraction',
+        destination: 'Unknown',
+      );
+    }
+
+    return SavedPlace(
+      id: map['id']?.toString() ?? 'unknown_id',
+      name: map['name']?.toString() ?? 'Unnamed Place',
+      type: map['type']?.toString() ?? 'attraction',
+      destination: map['destination']?.toString() ?? 'Unknown',
+      imageUrl: map['imageUrl']?.toString(),
+      rating: map['rating']?.toDouble() ?? 0.0,
+      reviewCount: map['reviewCount'] ?? 0,
+      createdAt:
+          map['createdAt'] != null
+              ? DateTime.tryParse(map['createdAt'].toString())
+              : null,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'name': name,
+      'type': type,
+      'destination': destination,
+      'imageUrl': imageUrl,
+      'rating': rating,
+      'reviewCount': reviewCount,
+      'createdAt': createdAt?.toIso8601String(),
+    };
+  }
+}
+
+class SavedPlacesPage extends StatefulWidget {
+  @override
+  _SavedPlacesPageState createState() => _SavedPlacesPageState();
+}
+
+class _SavedPlacesPageState extends State<SavedPlacesPage>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  late Future<List<SavedPlace>> _savedPlaces;
+  String? userId;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId != null) {
+      _savedPlaces = _getSavedPlaces(userId!);
+    } else {
+      _savedPlaces = Future.value([]);
+    }
+  }
+
+  Future<List<SavedPlace>> _getSavedPlaces(String userId) async {
+    try {
+      final places = await MongoDatabase.getSavedPlaces(userId);
+      return places.map((place) => SavedPlace.fromMap(place)).toList();
+    } catch (e) {
+      print('Error getting saved places: $e');
+      return [];
+    }
+  }
+
+  void _refreshPlaces() {
+    if (userId != null) {
+      setState(() {
+        _savedPlaces = _getSavedPlaces(userId!);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Saved Places'),
+        backgroundColor: Color(0xFF628EFF),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: [
+            Tab(text: 'Hotels', icon: Icon(Icons.hotel)),
+            Tab(text: 'Restaurants', icon: Icon(Icons.restaurant)),
+            Tab(text: 'Attractions', icon: Icon(Icons.attractions)),
+          ],
+        ),
+      ),
+      body: FutureBuilder<List<SavedPlace>>(
+        future: _savedPlaces,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError ||
+              !snapshot.hasData ||
+              snapshot.data!.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.bookmark_border, size: 64, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text(
+                    'No saved places yet',
+                    style: TextStyle(fontSize: 18, color: Colors.grey),
+                  ),
+                  Text(
+                    'Save hotels, restaurants, and attractions to see them here',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          final places = snapshot.data!;
+          return TabBarView(
+            controller: _tabController,
+            children: [
+              _buildPlacesList(places.where((p) => p.type == 'hotel').toList()),
+              _buildPlacesList(
+                places.where((p) => p.type == 'restaurant').toList(),
+              ),
+              _buildPlacesList(
+                places.where((p) => p.type == 'attraction').toList(),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildPlacesList(List<SavedPlace> places) {
+    if (places.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search_off, size: 64, color: Colors.grey),
+            SizedBox(height: 16),
+            Text(
+              'No saved ${_getPlaceType(_tabController.index)} yet',
+              style: TextStyle(fontSize: 18, color: Colors.grey),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      itemCount: places.length,
+      itemBuilder: (context, index) {
+        final place = places[index];
+        return Card(
+          margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: ListTile(
+            leading:
+                place.imageUrl != null
+                    ? ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        place.imageUrl!,
+                        width: 50,
+                        height: 50,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Icon(Icons.place, size: 50);
+                        },
+                      ),
+                    )
+                    : Icon(Icons.place, size: 50),
+            title: Text(place.name),
+            subtitle: Text(place.destination),
+            trailing: SaveButton(
+              placeId: place.id,
+              placeName: place.name,
+              placeType: place.type,
+              destination: place.destination,
+              imageUrl: place.imageUrl,
+              rating: place.rating,
+              reviewCount: place.reviewCount,
+              onChanged: _refreshPlaces,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  String _getPlaceType(int index) {
+    switch (index) {
+      case 0:
+        return 'hotels';
+      case 1:
+        return 'restaurants';
+      case 2:
+        return 'attractions';
+      default:
+        return 'places';
+    }
+  }
+}
+
+// Helper extension to capitalize strings
+extension StringExtension on String {
+  String capitalize() {
+    return "${this[0].toUpperCase()}${this.substring(1)}";
+  }
+}
+
+class SaveButton extends StatefulWidget {
+  final String placeId;
+  final String placeName;
+  final String placeType;
+  final String destination;
+  final String? imageUrl;
+  final double rating;
+  final int reviewCount;
+  final VoidCallback? onChanged;
+
+  const SaveButton({
+    Key? key,
+    required this.placeId,
+    required this.placeName,
+    required this.placeType,
+    required this.destination,
+    this.imageUrl,
+    required this.rating,
+    required this.reviewCount,
+    this.onChanged,
+  }) : super(key: key);
+
+  @override
+  _SaveButtonState createState() => _SaveButtonState();
+}
+
+class _SaveButtonState extends State<SaveButton> {
+  late Future<bool> _isSavedFuture;
+  String? userId;
+
+  @override
+  void initState() {
+    super.initState();
+    userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId != null) {
+      _isSavedFuture = MongoDatabase.isPlaceSaved(userId!, widget.placeId);
+    } else {
+      _isSavedFuture = Future.value(false);
+    }
+  }
+
+  Future<void> _toggleSave(bool currentStatus) async {
+    if (userId == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Please sign in to save places')));
+      return;
+    }
+
+    try {
+      if (currentStatus) {
+        await MongoDatabase.removePlace(userId!, widget.placeId);
+      } else {
+        await MongoDatabase.savePlace(userId!, {
+          'id': widget.placeId,
+          'name': widget.placeName,
+          'type': widget.placeType,
+          'destination': widget.destination,
+          'imageUrl': widget.imageUrl,
+          'rating': widget.rating,
+          'reviewCount': widget.reviewCount,
+          'createdAt': DateTime.now().toIso8601String(),
+        });
+      }
+
+      setState(() {
+        _isSavedFuture = Future.value(!currentStatus);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            !currentStatus
+                ? 'Saved ${widget.placeName} to your places'
+                : 'Removed ${widget.placeName} from saved places',
+          ),
+        ),
+      );
+      if (widget.onChanged != null) {
+        widget.onChanged!();
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error saving place: $e')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: _isSavedFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return IconButton(
+            icon: Icon(Icons.bookmark_border, color: Colors.grey),
+            onPressed: null,
+          );
+        }
+
+        final isSaved = snapshot.data ?? false;
+
+        return IconButton(
+          icon: Icon(
+            isSaved ? Icons.bookmark : Icons.bookmark_border,
+            color: isSaved ? Colors.blue : Colors.grey,
+          ),
+          onPressed: () => _toggleSave(isSaved),
+        );
+      },
+    );
+  }
+}
+
+class EditTripPage extends StatefulWidget {
+  final String tripId;
+  final String currentName;
+  final Function(String newName) onSave;
+  final Function() onDelete;
+
+  const EditTripPage({
+    Key? key,
+    required this.tripId,
+    required this.currentName,
+    required this.onSave,
+    required this.onDelete,
+  }) : super(key: key);
+
+  @override
+  _EditTripPageState createState() => _EditTripPageState();
+}
+
+class _EditTripPageState extends State<EditTripPage> {
+  late TextEditingController _nameController;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.currentName);
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _confirmDelete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Text('Delete Trip'),
+            content: Text(
+              'Are you sure you want to delete this trip? This action cannot be undone.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text('Delete', style: TextStyle(color: Colors.red)),
+              ),
+            ],
+          ),
+    );
+
+    if (confirmed == true) {
+      widget.onDelete();
+      Navigator.pop(context); // Close the edit page
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Edit Trip'),
+        actions: [
+          IconButton(
+            icon:
+                _isSaving
+                    ? CircularProgressIndicator(color: Colors.white)
+                    : Icon(Icons.save),
+            onPressed:
+                _isSaving
+                    ? null
+                    : () async {
+                      if (_nameController.text.trim().isNotEmpty) {
+                        setState(() => _isSaving = true);
+                        await widget.onSave(_nameController.text.trim());
+                        Navigator.pop(
+                          context,
+                          _nameController.text.trim(),
+                        ); // Return the new name
+                      }
+                    },
+          ),
+        ],
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            TextField(
+              controller: _nameController,
+              decoration: InputDecoration(
+                labelText: 'Trip Name',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: _confirmDelete,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: Text('Delete Trip'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class SampleTripsPage extends StatelessWidget {
+  static const routeName = '/sampleTrips';
+
+  final List<Map<String, dynamic>> sampleTrips = [
+    {
+      'id': '1',
+      'name': 'Weekend in Penang',
+      'description': 'Explore the best of Penang in 2 days',
+      'image': 'assets/images/sample_penang.jpg',
+      'itinerary': [
+        {
+          'day': 1,
+          'activities': [
+            {
+              'name': 'Visit Kek Lok Si Temple',
+              'time': '09:00',
+              'notes': 'Largest Buddhist temple in Malaysia',
+            },
+            {
+              'name': 'Lunch at Gurney Drive',
+              'time': '12:30',
+              'notes': 'Try local hawker food',
+            },
+            {
+              'name': 'Explore George Town Street Art',
+              'time': '14:00',
+              'notes': 'Walk around the heritage area',
+            },
+          ],
+        },
+        {
+          'day': 2,
+          'activities': [
+            {
+              'name': 'Penang Hill',
+              'time': '08:00',
+              'notes': 'Take the funicular train up',
+            },
+            {
+              'name': 'Batu Ferringhi Beach',
+              'time': '13:00',
+              'notes': 'Relax by the beach',
+            },
+          ],
+        },
+      ],
+    },
+    {
+      'id': '2',
+      'name': 'Kuala Lumpur City Tour',
+      'description': 'Experience the highlights of KL',
+      'image': 'assets/images/sample_kl.jpg',
+      'itinerary': [
+        {
+          'day': 1,
+          'activities': [
+            {
+              'name': 'Petronas Twin Towers',
+              'time': '10:00',
+              'notes': 'Visit the observation deck',
+            },
+            {
+              'name': 'Batu Caves',
+              'time': '14:00',
+              'notes': 'Climb the colorful steps',
+            },
+          ],
+        },
+      ],
+    },
+    // Add more sample trips as needed
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Sample Trips'),
+        backgroundColor: Color(0xFF628EFF),
+      ),
+      body: ListView.builder(
+        padding: EdgeInsets.all(16),
+        itemCount: sampleTrips.length,
+        itemBuilder: (context, index) {
+          final trip = sampleTrips[index];
+          return Card(
+            margin: EdgeInsets.only(bottom: 16),
+            child: ListTile(
+              contentPadding: EdgeInsets.all(16),
+              leading:
+                  trip['image'] != null
+                      ? Image.asset(
+                        trip['image'],
+                        width: 80,
+                        height: 80,
+                        fit: BoxFit.cover,
+                      )
+                      : Icon(Icons.trip_origin, size: 50),
+              title: Text(
+                trip['name'],
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: Text(trip['description']),
+              trailing: Icon(Icons.arrow_forward),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => SampleTripDetailsPage(trip: trip),
+                  ),
+                );
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class SampleTripDetailsPage extends StatelessWidget {
+  final Map<String, dynamic> trip;
+
+  const SampleTripDetailsPage({Key? key, required this.trip}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(trip['name']),
+        backgroundColor: Color(0xFF628EFF),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.save),
+            onPressed: () async {
+              final user = FirebaseAuth.instance.currentUser;
+              if (user == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Please sign in to save trips')),
+                );
+                return;
+              }
+
+              try {
+                // Convert sample itinerary to database format
+                List<Map<String, dynamic>> formattedItinerary = [];
+
+                for (var day in trip['itinerary'] ?? []) {
+                  for (var activity in day['activities'] ?? []) {
+                    formattedItinerary.add({
+                      'place': {
+                        'id':
+                            activity['id'] ??
+                            'place_${DateTime.now().millisecondsSinceEpoch}',
+                        'name': activity['name'] ?? 'Unnamed Activity',
+                        'type': activity['type'] ?? 'attraction',
+                        'destination': trip['name'] ?? 'Unknown Destination',
+                        'imageUrl': activity['imageUrl'],
+                        'rating': activity['rating']?.toDouble() ?? 4.0,
+                        'reviewCount': activity['reviewCount'] ?? 0,
+                      },
+                      'date':
+                          DateTime.now()
+                              .add(Duration(days: day['day'] ?? 0))
+                              .toIso8601String(),
+                      'arrivalTime': activity['time'] ?? '12:00',
+                      'notes': activity['notes'],
+                    });
+                  }
+                }
+
+                await MongoDatabase.saveTrip(user.uid, {
+                  'name': trip['name'] ?? 'New Trip',
+                  'itinerary': formattedItinerary,
+                  'isSample': true,
+                  'createdAt': DateTime.now(),
+                });
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Trip saved successfully!')),
+                );
+                Navigator.pop(context, true);
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to save trip: ${e.toString()}'),
+                  ),
+                );
+                print('Error saving trip: $e');
+                print('Trip data: ${trip.toString()}');
+              }
+            },
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (trip['image'] != null)
+              Image.asset(
+                trip['image'],
+                height: 200,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              ),
+            SizedBox(height: 16),
+            Text(trip['description'], style: TextStyle(fontSize: 16)),
+            SizedBox(height: 24),
+            Text(
+              'Itinerary',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 16),
+            ..._buildItinerary(trip['itinerary']),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildItinerary(List<dynamic> itinerary) {
+    List<Widget> widgets = [];
+    for (var day in itinerary) {
+      widgets.add(
+        Padding(
+          padding: EdgeInsets.only(bottom: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Day ${day['day']}',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 8),
+              ...day['activities'].map<Widget>((activity) {
+                return Padding(
+                  padding: EdgeInsets.only(bottom: 8, left: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.access_time, size: 16),
+                          SizedBox(width: 8),
+                          Text(
+                            activity['time'],
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 4),
+                      Text(activity['name'], style: TextStyle(fontSize: 16)),
+                      if (activity['notes'] != null &&
+                          activity['notes'].isNotEmpty)
+                        Padding(
+                          padding: EdgeInsets.only(left: 24, top: 4),
+                          child: Text(
+                            activity['notes'],
+                            style: TextStyle(fontSize: 14, color: Colors.grey),
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ],
+          ),
+        ),
+      );
+    }
+    return widgets;
+  }
+}
+
+// trip_picture_type.dart
+enum TripPictureType { beach, city, mountain, cultural, food, none }
+
+extension TripPictureTypeExtension on TripPictureType {
+  String get assetPath {
+    switch (this) {
+      case TripPictureType.beach:
+        return 'assets/trip_images/beach.jpg';
+      case TripPictureType.city:
+        return 'assets/trip_images/city.jpg';
+      case TripPictureType.mountain:
+        return 'assets/trip_images/mountain.jpg';
+      case TripPictureType.cultural:
+        return 'assets/trip_images/cultural.jpg';
+      case TripPictureType.food:
+        return 'assets/trip_images/food.jpg';
+      case TripPictureType.none:
+        return 'assets/trip_images/none.jpg';
+    }
+  }
+
+  String get displayName {
+    switch (this) {
+      case TripPictureType.beach:
+        return 'Beach';
+      case TripPictureType.city:
+        return 'City';
+      case TripPictureType.mountain:
+        return 'Mountain';
+      case TripPictureType.cultural:
+        return 'Cultural';
+      case TripPictureType.food:
+        return 'Food';
+      case TripPictureType.none:
+        return 'None';
+    }
+  }
+}
+
+class PlanPage extends StatefulWidget {
+  //Plan page
+  @override
+  _PlanPageState createState() => _PlanPageState();
+}
+
+class _PlanPageState extends State<PlanPage> {
+  List<Map<String, dynamic>> _userTrips = [];
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserTrips();
+  }
+
+  Future<void> _loadUserTrips() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final trips = await MongoDatabase.getUserTrips(user.uid);
+      setState(() => _userTrips = trips);
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to load trips: $e')));
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  String _formatTripDates(Map<String, dynamic> trip) {
+    // Extract dates from itinerary if available
+    if (trip['itinerary'] != null && (trip['itinerary'] as List).isNotEmpty) {
+      List<DateTime> dates = [];
+
+      for (var item in trip['itinerary']) {
+        if (item['date'] != null) {
+          // Convert the date string to DateTime
+          DateTime date;
+          if (item['date'] is String) {
+            date = DateTime.parse(item['date']);
+          } else {
+            // Handle MongoDB date format if needed
+            date = DateTime.fromMillisecondsSinceEpoch(
+              item['date']['\$date'] is int
+                  ? item['date']['\$date']
+                  : int.parse(item['date']['\$date']['\$numberLong']),
+            );
+          }
+
+          // Add only unique dates
+          if (!dates.any(
+            (d) =>
+                d.year == date.year &&
+                d.month == date.month &&
+                d.day == date.day,
+          )) {
+            dates.add(date);
+          }
+        }
+      }
+
+      dates.sort();
+
+      if (dates.isNotEmpty) {
+        final startDate = dates.first;
+        final endDate = dates.last;
+
+        // Format the dates
+        final startDay = startDate.day;
+        final endDay = endDate.day;
+        final month = _getMonthName(endDate.month);
+        final year = endDate.year;
+
+        return '$startDay - $endDay $month $year';
+      }
+    }
+
+    // Default if no dates available
+    return 'No dates set';
+  }
+
+  String _getMonthName(int month) {
+    const monthNames = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return monthNames[month - 1];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          // Trip list - now extends to the full height of the screen
+          if (_userTrips.isEmpty && !_isLoading)
+            Center(
+              child: Text(
+                "No trips created yet!\nStart by creating your first trip.",
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 18, color: Colors.grey),
+              ),
+            ),
+          if (_userTrips.isNotEmpty)
+            ListView.builder(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                16,
+                16,
+                180,
+              ), // Add bottom padding for the buttons
+              itemCount: _userTrips.length,
+              itemBuilder: (context, index) {
+                final trip = _userTrips[index];
+                return GestureDetector(
+                  onTap: () async {
+                    final shouldRefresh = await Navigator.push<bool>(
+                      context,
+                      MaterialPageRoute(
+                        builder:
+                            (context) => TripDetailsPage(
+                              tripName: trip['name'],
+                              tripData: trip,
+                            ),
+                      ),
+                    );
+                    if (shouldRefresh == true && mounted) {
+                      _loadUserTrips();
+                    }
+                  },
+                  child: Container(
+                    margin: EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 4,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Stack(
+                        children: [
+                          // Trip image
+                          Container(
+                            height: 180,
+                            width: double.infinity,
+                            child:
+                                trip['pictureType'] != null
+                                    ? Image.asset(
+                                      TripPictureType.values
+                                          .firstWhere(
+                                            (e) =>
+                                                e.toString() ==
+                                                trip['pictureType'],
+                                            orElse: () => TripPictureType.none,
+                                          )
+                                          .assetPath,
+                                      fit: BoxFit.cover,
+                                    )
+                                    : Image.asset(
+                                      'assets/trip_images/default_trip.jpg', // Add a default image
+                                      fit: BoxFit.cover,
+                                    ),
+                          ),
+
+                          // Places count badge
+                          Positioned(
+                            top: 12,
+                            right: 12,
+                            child: Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Text(
+                                '${trip['itinerary']?.length ?? 0} places',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          // Trip details at bottom
+                          Positioned(
+                            bottom: 0,
+                            left: 0,
+                            right: 0,
+                            child: Container(
+                              padding: EdgeInsets.all(12),
+                              decoration: BoxDecoration(color: Colors.white),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    trip['name'],
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  SizedBox(height: 4),
+                                  Text(
+                                    _formatTripDates(trip),
+                                    style: TextStyle(
+                                      color: Colors.grey[700],
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+
+          // Buttons at the bottom in a floating container
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              padding: EdgeInsets.fromLTRB(20, 10, 20, 20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 4,
+                    offset: Offset(0, -2),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color(0xFF5856D6),
+                      minimumSize: Size(double.infinity, 50),
+                    ),
+                    onPressed: () async {
+                      final shouldRefresh = await Navigator.push<bool>(
+                        context,
+                        MaterialPageRoute(builder: (context) => TripPage()),
+                      );
+                      if (shouldRefresh == true && mounted) {
+                        _loadUserTrips(); // Refresh the trip list
+                      }
+                    },
+                    child: Text(
+                      "Create a trip +",
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                  ),
+                  SizedBox(height: 10),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color(0xFF5856D6),
+                      minimumSize: Size(double.infinity, 50),
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => SavedPlacesPage(),
+                        ),
+                      );
+                    },
+                    child: Text(
+                      "View Saved Places",
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                  ),
+                  SizedBox(height: 10),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color(0xFF5856D6),
+                      minimumSize: Size(double.infinity, 50),
+                    ),
+                    onPressed: () {
+                      // AI Trip Builder functionality
+                    },
+                    child: Text(
+                      "Build a trip with AI",
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Show loading indicator if loading
+          if (_isLoading) Center(child: CircularProgressIndicator()),
+        ],
+      ),
     );
   }
 }
