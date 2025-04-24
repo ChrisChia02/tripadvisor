@@ -1,4 +1,5 @@
 const express = require("express");
+const axios = require('axios');
 const { Pool } = require("pg");
 require("dotenv").config();
 const multer = require("multer");
@@ -303,15 +304,14 @@ app.post("/pay", (req, res) => {
 // ✅ Payment Success Endpoint
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
-const TEMPLATE_NAME = 'booking_confirmation';
 const testPhone = '+601133611355';
+const TEMPLATE_NAME = 'trip';
+const WHATSAPP_URL = `https://graph.facebook.com/v22.0/${PHONE_NUMBER_ID}/messages`;
 
-const WHATSAPP_URL = `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`;
-
-async function sendWhatsAppMessage(phone, date) {
+async function sendWhatsAppMessage(testPhone, date) {
   const payload = {
     messaging_product: 'whatsapp',
-    to: phone,
+    to: testPhone,
     type: 'template',
     template: {
       name: TEMPLATE_NAME,
@@ -335,76 +335,48 @@ async function sendWhatsAppMessage(phone, date) {
   return axios.post(WHATSAPP_URL, payload, { headers });
 }
 
-router.get('/success', async (req, res) => {
-  const { paymentId, PayerID } = req.query;
-
-  try {
-    const payment = await new Promise((resolve, reject) => {
-      paypal.payment.execute(paymentId, { payer_id: PayerID }, (err, payment) => {
-        err ? reject(err) : resolve(payment);
-      });
+async function handleSuccessfulPayment(paymentId, PayerID) {
+  const payment = await new Promise((resolve, reject) => {
+    paypal.payment.execute(paymentId, { payer_id: PayerID }, (err, payment) => {
+      err ? reject(err) : resolve(payment);
     });
+  });
 
-    const custom = JSON.parse(payment.transactions[0].custom);
-    const {
+  const custom = JSON.parse(payment.transactions[0].custom);
+  const { user_id, place_name, place_lat, place_lng, booked_at, phone } = custom;
+
+  const booking = await pool.query(
+    `INSERT INTO bookings 
+     (user_id, paypal_transaction_id, amount, status, place_name, place_lat, place_lng)
+     VALUES ($1, $2, $3, 'paid', $4, $5, $6)
+     RETURNING *`,
+    [
       user_id,
+      paymentId,
+      payment.transactions[0].amount.total,
       place_name,
       place_lat,
-      place_lng,
-      phone, // <- make sure this is sent in the payment metadata
-      booking_date // <- this too
-    } = custom;
+      place_lng
+    ]
+  );
 
-    const booking = await pool.query(
-      `INSERT INTO bookings 
-       (user_id, paypal_transaction_id, amount, status, place_name, place_lat, place_lng)
-       VALUES ($1, $2, $3, 'paid', $4, $5, $6)
-       RETURNING *`,
-      [
-        user_id,
-        paymentId,
-        payment.transactions[0].amount.total,
-        place_name,
-        place_lat,
-        place_lng
-      ]
-    );
+  const formattedDate = new Date(booked_at).toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
+  });
 
-    // Format date for WhatsApp message
-    const formattedDate = new Date(booking_date).toLocaleDateString('en-US', {
-      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
-    });
-
-    // Send WhatsApp message
-    if (phone && booking_date) {
-      try {
-        await sendWhatsAppMessage(testPhone, formattedDate);
-        console.log('✅ WhatsApp message sent');
-      } catch (err) {
-        console.error('❌ Failed to send WhatsApp message:', err.response?.data || err.message);
-      }
+  if (phone && booked_at) {
+    try {
+      await sendWhatsAppMessage(testPhone, formattedDate);
+      console.log('✅ WhatsApp message sent');
+    } catch (err) {
+      console.error('❌ Failed to send WhatsApp message:', err.response?.data || err.message);
     }
-
-    res.send(`
-      <html>
-        <head><title>Payment Successful</title></head>
-        <body style="font-family: Arial; text-align: center; margin-top: 50px;">
-          <h1>🎉 Payment Successful!</h1>
-          <p>Thank you for your booking!</p>
-          <p>You may close this window and return to the app.</p>
-        </body>
-      </html>
-    `);
-  } catch (err) {
-    console.error("💥 Payment processing failed:", err);
-    res.status(500).json({
-      error: "Payment processing failed",
-      details: err.response?.details || err.message
-    });
   }
-});
 
-module.exports = router;
+  return booking.rows[0];
+}
+
+module.exports = { handleSuccessfulPayment };
 
 // ✅ Payment Cancel Endpoint
 app.get("/cancel", (req, res) => {
