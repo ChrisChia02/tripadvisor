@@ -16,7 +16,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:provider/provider.dart';
 import 'auth_services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:add_2_calendar/add_2_calendar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tripadvisor/mongodb.dart';
 import 'database_helper.dart';
@@ -2259,26 +2258,12 @@ class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
         placeName = data["place_name"] ?? "Hotel Booking";
         bookedAt = DateTime.parse(data["booked_at"]);
 
-        _addToCalendar(placeName!, bookedAt!);
       } else {
         debugPrint("Failed to get booking: ${res.body}");
       }
     } catch (e) {
       debugPrint("Error: $e");
     }
-  }
-
-  void _addToCalendar(String placeName, DateTime date) {
-    final event = Event(
-      title: 'Booking at $placeName',
-      description: 'Your hotel booking reminder.',
-      location: placeName,
-      startDate: date,
-      endDate: date.add(const Duration(hours: 1)),
-      allDay: false,
-    );
-
-    Add2Calendar.addEvent2Cal(event);
   }
 
   @override

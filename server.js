@@ -301,7 +301,41 @@ app.post("/pay", (req, res) => {
 });
 
 // ✅ Payment Success Endpoint
-app.get("/success", async (req, res) => {
+const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
+const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+const TEMPLATE_NAME = 'booking_confirmation';
+const testPhone = '+601133611355';
+
+const WHATSAPP_URL = `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`;
+
+async function sendWhatsAppMessage(phone, date) {
+  const payload = {
+    messaging_product: 'whatsapp',
+    to: phone,
+    type: 'template',
+    template: {
+      name: TEMPLATE_NAME,
+      language: { code: 'en_US' },
+      components: [
+        {
+          type: 'body',
+          parameters: [
+            { type: 'text', text: date }
+          ]
+        }
+      ]
+    }
+  };
+
+  const headers = {
+    Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+    'Content-Type': 'application/json'
+  };
+
+  return axios.post(WHATSAPP_URL, payload, { headers });
+}
+
+router.get('/success', async (req, res) => {
   const { paymentId, PayerID } = req.query;
 
   try {
@@ -311,45 +345,56 @@ app.get("/success", async (req, res) => {
       });
     });
 
-    // Extract metadata
     const custom = JSON.parse(payment.transactions[0].custom);
-    const userId = custom.user_id;
+    const {
+      user_id,
+      place_name,
+      place_lat,
+      place_lng,
+      phone, // <- make sure this is sent in the payment metadata
+      booking_date // <- this too
+    } = custom;
 
-	const {
-  	 user_id,
-  	 place_name,
-  	 place_lat,
-  	 place_lng
-	} = custom;
-
-    // ✅ Insert booking (no plan_id)
     const booking = await pool.query(
-  `INSERT INTO bookings 
-   (user_id, paypal_transaction_id, amount, status, place_name, place_lat, place_lng)
-   VALUES ($1, $2, $3, 'paid', $4, $5, $6)
-   RETURNING *`,
-  [
-    user_id,
-    paymentId,
-    payment.transactions[0].amount.total,
-    place_name,
-    place_lat,
-    place_lng
-  ]
-);
+      `INSERT INTO bookings 
+       (user_id, paypal_transaction_id, amount, status, place_name, place_lat, place_lng)
+       VALUES ($1, $2, $3, 'paid', $4, $5, $6)
+       RETURNING *`,
+      [
+        user_id,
+        paymentId,
+        payment.transactions[0].amount.total,
+        place_name,
+        place_lat,
+        place_lng
+      ]
+    );
+
+    // Format date for WhatsApp message
+    const formattedDate = new Date(booking_date).toLocaleDateString('en-US', {
+      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
+    });
+
+    // Send WhatsApp message
+    if (phone && booking_date) {
+      try {
+        await sendWhatsAppMessage(testPhone, formattedDate);
+        console.log('✅ WhatsApp message sent');
+      } catch (err) {
+        console.error('❌ Failed to send WhatsApp message:', err.response?.data || err.message);
+      }
+    }
 
     res.send(`
-  <html>
-    <head><title>Payment Successful</title></head>
-    <body style="font-family: Arial; text-align: center; margin-top: 50px;">
-      <h1>🎉 Payment Successful!</h1>
-      <p>Thank you for your booking!</p>
-      <p>You may close this window and return to the app.</p>
-    </body>
-  </html>
-`);
-
-
+      <html>
+        <head><title>Payment Successful</title></head>
+        <body style="font-family: Arial; text-align: center; margin-top: 50px;">
+          <h1>🎉 Payment Successful!</h1>
+          <p>Thank you for your booking!</p>
+          <p>You may close this window and return to the app.</p>
+        </body>
+      </html>
+    `);
   } catch (err) {
     console.error("💥 Payment processing failed:", err);
     res.status(500).json({
@@ -358,6 +403,8 @@ app.get("/success", async (req, res) => {
     });
   }
 });
+
+module.exports = router;
 
 // ✅ Payment Cancel Endpoint
 app.get("/cancel", (req, res) => {
