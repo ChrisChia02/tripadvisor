@@ -335,6 +335,7 @@ app.post("/pay", (req, res) => {
 // ✅ Payment Success Endpoint
 app.get("/success", async (req, res) => {
   const { paymentId, PayerID } = req.query;
+const booked_at = new Date().toISOString();
 
   try {
     const payment = await new Promise((resolve, reject) => {
@@ -351,14 +352,15 @@ app.get("/success", async (req, res) => {
   	 user_id,
   	 place_name,
   	 place_lat,
-  	 place_lng
+  	 place_lng,
+	booked_at
 	} = custom;
 
     // ✅ Insert booking (no plan_id)
     const booking = await pool.query(
   `INSERT INTO bookings 
-   (user_id, paypal_transaction_id, amount, status, place_name, place_lat, place_lng)
-   VALUES ($1, $2, $3, 'paid', $4, $5, $6)
+   (user_id, paypal_transaction_id, amount, status, place_name, place_lat, place_lng, booked_at)
+   VALUES ($1, $2, $3, 'paid', $4, $5, $6, $7)
    RETURNING *`,
   [
     user_id,
@@ -366,7 +368,8 @@ app.get("/success", async (req, res) => {
     payment.transactions[0].amount.total,
     place_name,
     place_lat,
-    place_lng
+    place_lng,
+    booked_at
   ]
 );
 
