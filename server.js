@@ -18,7 +18,7 @@ async function sendWhatsAppMessage(date) {
     type: "template",
     template: {
       name: "tripadvisor", // Ensure this matches your template name
-      language: { code: "en" },
+      language: { code: "en_US" },
       components: [
         {
           type: "body",
