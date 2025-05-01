@@ -39,7 +39,12 @@ async function sendWhatsAppMessage(date) {
   };
 
   const url = `https://graph.facebook.com/v22.0/576026228934824/messages`;
-  return axios.post(url, payload, { headers });
+  try {
+    const response = await axios.post(url, payload, { headers });
+    console.log("✅ WhatsApp API success:", response.data);
+  } catch (err) {
+    console.error("❌ WhatsApp API error:", err.response?.data || err.message);
+  }
 }
 
 // ✅ PostgreSQL Connection (same as yours)
