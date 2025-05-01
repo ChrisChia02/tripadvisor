@@ -2216,67 +2216,6 @@ class _HotelsPageState extends State<HotelsPage> {
   int _calculateNights() {
     return _checkOutDate.difference(_checkInDate).inDays;
   }
-
-  void _bookHotel(PointOfInterest hotel) {
-    // Here you would handle the booking process
-    // For now, just show a confirmation message
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Booking confirmed at ${hotel.name}!'),
-        backgroundColor: Colors.green,
-      ),
-    );
-  }
-}
-
-class BookingSuccessScreen extends StatefulWidget {
-  final String userId;
-  const BookingSuccessScreen({super.key, required this.userId});
-
-  @override
-  State<BookingSuccessScreen> createState() => _BookingSuccessScreenState();
-}
-
-class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
-  String? placeName;
-  DateTime? bookedAt;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchBookingAndAddToCalendar();
-  }
-
-  Future<void> _fetchBookingAndAddToCalendar() async {
-    try {
-      final res = await http.get(
-        Uri.parse("https://trip-advisor-woil.onrender.com/latest-booking/${widget.userId}"),
-      );
-
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        placeName = data["place_name"] ?? "Hotel Booking";
-        bookedAt = DateTime.parse(data["booked_at"]);
-
-      } else {
-        debugPrint("Failed to get booking: ${res.body}");
-      }
-    } catch (e) {
-      debugPrint("Error: $e");
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Booking Success")),
-      body: Center(
-        child: placeName == null
-            ? const CircularProgressIndicator()
-            : Text("🎉 Booking at $placeName added to calendar!"),
-      ),
-    );
-  }
 }
 
 class RestaurantsPage extends StatefulWidget {
@@ -3315,7 +3254,7 @@ class AttractionDetailsPage extends StatelessWidget {
 }
 
 class DestinationService {
-  final String apiKey = 'AIzaSyCKlRMcBAifI8ZrUoUegs6phg370RPgWIA';
+  final String apiKey = 'AIzaSyDmnBCSQ3jVr9L54w_iaDlzxHGdcb5lx8A';
   
   Future<Destination> getDestinationInfo(String destination) async {
     try {

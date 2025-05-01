@@ -9,6 +9,36 @@ const paypal = require("paypal-rest-sdk");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const axios = require('axios');
+
+async function sendWhatsAppMessage(date) {
+  const payload = {
+    messaging_product: 'whatsapp',
+    to: '601133611355',
+    type: 'template',
+    template: {
+      name: 'trip', // match the name in your WhatsApp template
+      language: { code: 'en_US' },
+      components: [
+        {
+          type: 'body',
+          parameters: [
+            { type: 'text', text: date }
+          ]
+        }
+      ]
+    }
+  };
+
+  const headers = {
+    Authorization: `Bearer EAAHtOSTuia8BOwxuCcVDu3ZC8y44QuJGPJWbQdRZAQkZCq3USEG3qklJu2NugHZAWP3PsWq88cHmakwVymZCrUEKvcPGUGulVdODEZBMxmo3n2FIXB6Ap5l7pSi6xHZBhD2HyWNVWBeNRnS5Ewa2CDV4trZBckhKEYNtblwve2Rsi52V9LHs6JWS0fJ7lum4RoVY7GbUtDDAzS8Pg0cC0FrTvoVyT2ZBDZCz9VzEWnFDuzYRsZD`,
+    'Content-Type': 'application/json'
+  };
+
+  const url = `https://graph.facebook.com/v22.0/576026228934824/messages`;
+  return axios.post(url, payload, { headers });
+}
+
 // ✅ PostgreSQL Connection (same as yours)
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || "postgresql://admin:your_password@your_host/trip_advisor_db",
@@ -283,6 +313,7 @@ app.post("/pay", (req, res) => {
         place_name: req.body.place_name,
         place_lat: req.body.place_lat,
         place_lng: req.body.place_lng,
+	booked_at: new Date().toISOString(),
       })
     }]
   };
@@ -338,6 +369,13 @@ app.get("/success", async (req, res) => {
     place_lng
   ]
 );
+
+// Format and send WhatsApp message
+const formattedDate = new Date(booked_at).toLocaleDateString('en-US', {
+  weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
+});
+
+await sendWhatsAppMessage(formattedDate);
 
     res.send(`
   <html>
