@@ -11,15 +11,26 @@ const PORT = process.env.PORT || 3000;
 
 const axios = require('axios');
 
-async function sendWhatsAppMessage() {
+async function sendWhatsAppMessage(date) {
   const payload = {
     messaging_product: "whatsapp",
     to: "601133611355",
     type: "template",
     template: {
-      name: "trip_confirmation", // Ensure template name is correct
+      name: "trip_confirmation", // Ensure this matches your template name
       language: { code: "en_US" },
-    },
+      components: [
+        {
+          type: "body",
+          parameters: [
+            {
+              type: "text",
+              text: date // Ensure the value passed here matches the expected parameter in your template
+            }
+          ]
+        }
+      ]
+    }
   };
 
   const headers = {
