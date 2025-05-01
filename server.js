@@ -66,7 +66,7 @@ app.post("/register", async (req, res) => {
 
     const result = await pool.query(
       `INSERT INTO users 
-       (id, email, username, gender, phone) 
+       (userid, email, username, gender, phone) 
        VALUES ($1, $2, $3, $4, $5) 
        RETURNING id, email`,
       [firebaseUserId, email, username, gender, phone]
