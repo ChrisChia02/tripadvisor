@@ -35,61 +35,32 @@ const upload = multer({
 // 1️⃣ ================== USERS ==================
 app.post("/register", async (req, res) => {
   console.log("📦 Full request body:", JSON.stringify(req.body, null, 2));
-  
   const { firebaseUserId, email, username, gender, phone } = req.body;
 
-  // Validation
   if (!firebaseUserId?.trim()) {
-    console.error("❌ Missing firebaseUserId");
     return res.status(400).json({ error: "Firebase UID required" });
   }
 
+  const client = await pool.connect();
   try {
-    // Test database connection first
-    await pool.query("SELECT 1");
-    console.log("✔️ Database connection OK");
-
-    const existingUser = await pool.query(
-      "SELECT id FROM users WHERE id = $1", 
-      [firebaseUserId]
-    );
-
+    const existingUser = await client.query("SELECT id FROM users WHERE id = $1", [firebaseUserId]);
     if (existingUser.rows.length > 0) {
-      console.warn("⚠️ Conflict - User exists:", existingUser.rows[0]);
       return res.status(409).json({ error: "User already registered" });
     }
 
-    console.log("ℹ️ Attempting insert with:", {
-      id: firebaseUserId,
-      email,
-      username,
-      gender,
-      phone
-    });
-
-    const result = await pool.query(
-      `INSERT INTO users 
-       (userid, email, username, gender, phone) 
-       VALUES ($1, $2, $3, $4, $5) 
+    const result = await client.query(
+      `INSERT INTO users (userid, email, username, gender, phone)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING id, email`,
       [firebaseUserId, email, username, gender, phone]
     );
 
-    console.log("✅ Insert result:", result.rows[0]);
-    return res.status(201).json(result.rows[0]);
-
-  } catch (error) {
-    console.error("💥 Full error:", {
-      message: error.message,
-      stack: error.stack,
-      code: error.code, // PostgreSQL error code
-      detail: error.detail
-    });
-    return res.status(500).json({ 
-      error: "Registration failed",
-      details: error.message,
-      hint: error.hint || null 
-    });
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error("💥 Registration DB error:", err);
+    res.status(500).json({ error: "Registration failed", details: err.message });
+  } finally {
+    client.release(); // always release the client
   }
 });
 
