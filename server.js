@@ -23,7 +23,7 @@ async function sendWhatsAppMessage() {
   };
 
   const headers = {
-    Authorization: `Bearer EAAHtOSTuia8BOzP4l3r97v3rLKsbLyxiWNQzrp4ncPG3UG5gLiGB1ZAcHyzMxSZAVN9x0GMFNgnTBNnJG1Kmi6P3iBqXZAtupbd7eLpSfBZAEKR3ZBk3ZBk3cLI5zNhEzU3HO63DLbyIANsUjoWneuGQshaT3GkESc0ZB1r7t4EdYLEIgfLsP4RJBULb4lbvYa04yktAMMP0kpXdk4yJZAMETHY0xDdaJe4Ec1vS4ImReJZBrD8ZD`,
+    Authorization: `Bearer EAAHtOSTuia8BOZCQCv9YtLiZAWn0E9mVLm35XyKdLYd1G112XgZAxCKoo3DVCkjdRY7bzQ86jbvga2xgTGHjKdURP05LvN3M3VpdL8F3RiewKS7ZBD0ndA2pWRMpdVOun9KJINg8pjVOBs2Or80tUInAYWNesj3Itr4DBd2a10UjogZBQAwmhZCJc3R5dMoZCV4uFGHABUP12RDkadazGWfGmB95tp1yRKJ5ISEItV7TFUZD`,
     'Content-Type': 'application/json',
   };
 
