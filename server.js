@@ -170,51 +170,146 @@ app.post("/uploadProfilePic/:id", upload.single("profilePic"), async (req, res) 
   }
 });
 
-// 2️⃣ ================== SAVED PLACES ==================
+// ⿢ ================== SAVED PLACES ==================
 // Save a place
-app.post("/api/save-place", async (req, res) => {
-  const { user_id, place_id, name, type, price_per_night } = req.body;
+app.post('/api/saved_places', async (req, res) => {
+  const { userId, placeId, name, type, destination, imageUrl, rating, reviewCount, lat, lng } = req.body;
   try {
     const result = await pool.query(
-      `INSERT INTO saved_places (user_id, place_id, name, type, price_per_night) 
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [user_id, place_id, name, type, price_per_night]
+      `INSERT INTO saved_places (user_id, place_id, name, type, destination, image_url, rating, review_count, lat, lng)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (user_id, place_id) DO NOTHING
+       RETURNING *`,
+      [userId, placeId, name, type, destination, imageUrl, rating, reviewCount, lat, lng]
     );
+    if (result.rowCount === 0) {
+      return res.status(409).json({ error: 'Place already saved' });
+    }
     res.status(201).json(result.rows[0]);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to save place" });
+  } catch (error) {
+    console.error('Error saving place:', error);
+    res.status(500).json({ error: 'Failed to save place' });
   }
 });
 
-// Get user's saved places
-app.get("/api/saved-places/:user_id", async (req, res) => {
+//remove a place
+app.delete('/api/saved_places/:userId/:placeId', async (req, res) => {
+  const { userId, placeId } = req.params;
   try {
     const result = await pool.query(
-      "SELECT * FROM saved_places WHERE user_id = $1",
-      [req.params.user_id]
+      'DELETE FROM saved_places WHERE user_id = $1 AND place_id = $2',
+      [userId, placeId]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Place not found' });
+    }
+    res.status(204).send();
+  } catch (error) {
+    console.error('Error removing place:', error);
+    res.status(500).json({ error: 'Failed to remove place' });
+  }
+});
+
+// Get saved places
+app.get('/api/saved_places/:userId', async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const result = await pool.query(
+      'SELECT * FROM saved_places WHERE user_id = $1',
+      [userId]
     );
     res.json(result.rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Database error" });
+  } catch (error) {
+    console.error('Error fetching saved places:', error);
+    res.status(500).json({ error: 'Failed to fetch saved places' });
   }
 });
 
-// 3️⃣ ================== TRIPS ==================
-// Create a trip
-app.post("/api/trips", async (req, res) => {
-  const { user_id, title, start_date, end_date } = req.body;
+// Check if place is saved
+app.get('/api/saved_places/:userId/:placeId', async (req, res) => {
+  const { userId, placeId } = req.params;
   try {
     const result = await pool.query(
-      `INSERT INTO trips (user_id, title, start_date, end_date) 
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [user_id, title, start_date, end_date]
+      'SELECT EXISTS (SELECT 1 FROM saved_places WHERE user_id = $1 AND place_id = $2) AS is_saved',
+      [userId, placeId]
+    );
+    res.json({ isSaved: result.rows[0].is_saved });
+  } catch (error) {
+    console.error('Error checking saved place:', error);
+    res.status(500).json({ error: 'Failed to check saved place' });
+  }
+});
+
+// ⿣ ================== TRIPS ==================
+// Save a trip
+app.post('/api/trips', async (req, res) => {
+  const { userId, name, itinerary, pictureType } = req.body;
+  try {
+    const result = await pool.query(
+      `INSERT INTO trips (user_id, name, itinerary, picture_type, created_at)
+       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+       RETURNING *`,
+      [userId, name, itinerary, pictureType]
     );
     res.status(201).json(result.rows[0]);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to create trip" });
+  } catch (error) {
+    console.error('Error saving trip:', error);
+    res.status(500).json({ error: 'Failed to save trip' });
+  }
+});
+
+// Get user trips
+app.get('/api/trips/:userId', async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const result = await pool.query(
+      'SELECT * FROM trips WHERE user_id = $1 ORDER BY created_at DESC',
+      [userId]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching trips:', error);
+    res.status(500).json({ error: 'Failed to fetch trips' });
+  }
+});
+
+// Update a trip
+app.put('/api/trips/:tripId', async (req, res) => {
+  const { tripId } = req.params;
+  const { name, itinerary, pictureType } = req.body;
+  try {
+    const result = await pool.query(
+      `UPDATE trips
+       SET name = $1, itinerary = $2, picture_type = $3, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $4
+       RETURNING *`,
+      [name, itinerary, pictureType, tripId]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Trip not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating trip:', error);
+    res.status(500).json({ error: 'Failed to update trip' });
+  }
+});
+
+// Delete a trip
+app.delete('/api/trips/:tripId', async (req, res) => {
+  const { tripId } = req.params;
+  try {
+    const result = await pool.query(
+      'DELETE FROM trips WHERE id = $1',
+      [tripId]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Trip not found' });
+    }
+    res.status(204).send();
+  } catch (error) {
+    console.error('Error deleting trip:', error);
+    res.status(500).json({ error: 'Failed to delete trip' });
   }
 });
 
