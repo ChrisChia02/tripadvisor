@@ -14,7 +14,7 @@ const axios = require('axios');
 async function sendWhatsAppMessage(date) {
   const payload = {
     messaging_product: "whatsapp",
-    to: "601133611355",
+    to: "60163277918",
     type: "template",
     template: {
       name: "tripadvisor", // Ensure this matches your template name
@@ -34,7 +34,7 @@ async function sendWhatsAppMessage(date) {
   };
 
   const headers = {
-    Authorization: `Bearer EAAHtOSTuia8BOZCQCv9YtLiZAWn0E9mVLm35XyKdLYd1G112XgZAxCKoo3DVCkjdRY7bzQ86jbvga2xgTGHjKdURP05LvN3M3VpdL8F3RiewKS7ZBD0ndA2pWRMpdVOun9KJINg8pjVOBs2Or80tUInAYWNesj3Itr4DBd2a10UjogZBQAwmhZCJc3R5dMoZCV4uFGHABUP12RDkadazGWfGmB95tp1yRKJ5ISEItV7TFUZD`,
+    Authorization: `Bearer EAAHtOSTuia8BO9ok7y1ZCBjZAOblLhKvkklg1qofZCGSmphG1AsU5U53ws1TQ2VLzzKavZB54SL58ZCZBalICZA6DlulYanhdrMZCG6gikB0yZCeIm5q0yQd2niLufzmoAn7M9f9T3pHAKwqZAWCJ7LyhUZBDndiuuxZBuonHydBLfjDTZCVGHO6sAAaew2AZAJApUlXGyZBiRlIuaROQwPFTge9HVwZBGRq5bjTgeD4e5EhueZCJcXMZD`,
     'Content-Type': 'application/json',
   };
 
