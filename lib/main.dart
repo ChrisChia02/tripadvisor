@@ -161,7 +161,7 @@ class _LoginPageState extends State<LoginPage> {
 
     // 2. Fetch complete user data
     final response = await http.get(
-      Uri.parse('https://tripadvisor-hgg4.onrender.com/users/$uid'),
+      Uri.parse('https://trip-advisor-woil.onrender.com/users/$uid'),
     );
 
     debugPrint('Backend response: ${response.body}'); // Verify this shows all fields
@@ -415,7 +415,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
     // **STEP 4: Store user info in MySQL via Node.js**
     final response = await http.post(
-      Uri.parse("https://tripadvisor-hgg4.onrender.com/register"), // Change to your backend URL
+      Uri.parse("https://trip-advisor-woil.onrender.com/register"), // Change to your backend URL
       headers: {"Content-Type": "application/json"},
       body: jsonEncode({
         "firebaseUserId": firebaseUserId, // Store Firebase UID in Database
@@ -802,7 +802,7 @@ void initState() {
       if (user != null) {
         // Fetch the user's _id from your backend
         final response = await http.get(
-          Uri.parse("https://tripadvisor-hgg4.onrender.com/users/${user.uid}"),
+          Uri.parse("https://trip-advisor-woil.onrender.com/users/${user.uid}"),
           headers: {"Content-Type": "application/json"},
         );
 
@@ -2153,7 +2153,7 @@ class _HotelsPageState extends State<HotelsPage> {
     debugPrint('Initiating payment for Firebase UID: $firebaseUid');
 
     final response = await http.post(
-      Uri.parse('https://tripadvisor-hgg4.onrender.com/pay'),
+      Uri.parse('https://trip-advisor-woil.onrender.com/pay'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'user_id': firebaseUid,
@@ -2250,7 +2250,7 @@ class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
   Future<void> _fetchBookingAndAddToCalendar() async {
     try {
       final res = await http.get(
-        Uri.parse("https://tripadvisor-hgg4.onrender.com/latest-booking/${widget.userId}"),
+        Uri.parse("https://trip-advisor-woil.onrender.com/latest-booking/${widget.userId}"),
       );
 
       if (res.statusCode == 200) {
@@ -5061,7 +5061,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   try {
-    final response = await http.get(Uri.parse("https://tripadvisor-hgg4.onrender.com/users/$userId"));
+    final response = await http.get(Uri.parse("https://trip-advisor-woil.onrender.com/users/$userId"));
     if (response.statusCode == 200 || response.statusCode == 201) {
       return jsonDecode(response.body);
     } else {
@@ -5152,7 +5152,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
       final userData = snapshot.data!;
       String profileImageUrl = userData["profile_picture"] != null
-          ? "https://tripadvisor-hgg4.onrender.com${userData["profile_picture"]}"
+          ? "https://trip-advisor-woil.onrender.com${userData["profile_picture"]}"
           : "assets/profile_placeholder.png";
 
       return Column(
@@ -5248,7 +5248,7 @@ class _BookingsPageState extends State<BookingsPage> {
       // Case 2: Registered user - Fetch simple_id first
       // Fetch bookings
       final bookingsResponse = await http.get(
-        Uri.parse("https://tripadvisor-hgg4.onrender.com/api/bookings?user_id=${user.uid}"),
+        Uri.parse("https://trip-advisor-woil.onrender.com/api/bookings?user_id=${user.uid}"),
       );
 
       if (bookingsResponse.statusCode == 200) {
@@ -5454,7 +5454,7 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
   }
 
   Future<Map<String, dynamic>> fetchUserData(String userId) async {
-    final response = await http.get(Uri.parse("http://tripadvisor-hgg4.onrender.com/users/$userId"));
+    final response = await http.get(Uri.parse("https://trip-advisor-woil.onrender.com/users/$userId"));
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
@@ -5490,7 +5490,7 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
 
                 final userData = snapshot.data!;
                 String profileImageUrl = userData["profile_picture"] != null
-                    ? "https://tripadvisor-hgg4.onrender.com${userData["profile_picture"]}"
+                    ? "https://trip-advisor-woil.onrender.com${userData["profile_picture"]}"
                     : "assets/profile_placeholder.png";
 
                 return SingleChildScrollView(

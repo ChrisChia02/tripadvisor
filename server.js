@@ -51,7 +51,7 @@ app.post("/register", async (req, res) => {
     const result = await client.query(
       `INSERT INTO users (userid, email, username, gender, phone)
        VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, email`,
+       RETURNING userid, email`,
       [firebaseUserId, email, username, gender, phone]
     );
 
@@ -65,11 +65,11 @@ app.post("/register", async (req, res) => {
 });
 
 // ✅ Get User Information by ID
-app.get("/users/:id", async (req, res) => {
+app.get("/users/:userid", async (req, res) => {
   const userId = req.params.id; // Keep as string (not `parseInt`)
 
   try {
-    const result = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
+    const result = await pool.query("SELECT * FROM users WHERE userid = $1", [userId]);
 
     if (result.rows.length === 0) {
       return res.json({
