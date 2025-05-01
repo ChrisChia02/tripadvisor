@@ -13,22 +13,25 @@ const axios = require('axios');
 
 async function sendWhatsAppMessage(date) {
   const payload = {
-    messaging_product: 'whatsapp',
-    to: '601133611355',
-    type: 'template',
-    template: {
-      name: 'trip', // match the name in your WhatsApp template
-      language: { code: 'en_US' },
-      components: [
-        {
-          type: 'body',
-          parameters: [
-            { type: 'text', text: date }
-          ]
-        }
-      ]
-    }
-  };
+  messaging_product: "whatsapp",
+  to: "601133611355",
+  type: "template",
+  template: {
+    name: "trip_confirmation", // new name
+    language: { code: "en_US" },
+    components: [
+      {
+        type: "body",
+        parameters: [
+          {
+            type: "text",
+            text: "Thursday, May 1, 2025"
+          }
+        ]
+      }
+    ]
+  }
+};
 
   const headers = {
     Authorization: `Bearer EAAHtOSTuia8BOwxuCcVDu3ZC8y44QuJGPJWbQdRZAQkZCq3USEG3qklJu2NugHZAWP3PsWq88cHmakwVymZCrUEKvcPGUGulVdODEZBMxmo3n2FIXB6Ap5l7pSi6xHZBhD2HyWNVWBeNRnS5Ewa2CDV4trZBckhKEYNtblwve2Rsi52V9LHs6JWS0fJ7lum4RoVY7GbUtDDAzS8Pg0cC0FrTvoVyT2ZBDZCz9VzEWnFDuzYRsZD`,
