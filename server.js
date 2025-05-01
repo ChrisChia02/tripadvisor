@@ -11,27 +11,28 @@ const PORT = process.env.PORT || 3000;
 
 const axios = require('axios');
 
-async function sendWhatsAppMessage(date) {
+async function sendWhatsAppMessage() {
   const payload = {
-  messaging_product: "whatsapp",
-  to: "601133611355",
-  type: "text",
-  text: {
-    body: "This is a test message from my backend."
-  }
-};
-
-  const headers = {
-    Authorization: `Bearer EAAHtOSTuia8BOwxuCcVDu3ZC8y44QuJGPJWbQdRZAQkZCq3USEG3qklJu2NugHZAWP3PsWq88cHmakwVymZCrUEKvcPGUGulVdODEZBMxmo3n2FIXB6Ap5l7pSi6xHZBhD2HyWNVWBeNRnS5Ewa2CDV4trZBckhKEYNtblwve2Rsi52V9LHs6JWS0fJ7lum4RoVY7GbUtDDAzS8Pg0cC0FrTvoVyT2ZBDZCz9VzEWnFDuzYRsZD`,
-    'Content-Type': 'application/json'
+    messaging_product: "whatsapp",
+    to: "601133611355",
+    type: "template",
+    template: {
+      name: "trip_confirmation", // Ensure template name is correct
+      language: { code: "en_US" },
+    },
   };
 
-  const url = `https://graph.facebook.com/v22.0/576026228934824/messages`;
+  const headers = {
+    Authorization: `Bearer EAAHtOSTuia8BOzP4l3r97v3rLKsbLyxiWNQzrp4ncPG3UG5gLiGB1ZAcHyzMxSZAVN9x0GMFNgnTBNnJG1Kmi6P3iBqXZAtupbd7eLpSfBZAEKR3ZBk3ZBk3cLI5zNhEzU3HO63DLbyIANsUjoWneuGQshaT3GkESc0ZB1r7t4EdYLEIgfLsP4RJBULb4lbvYa04yktAMMP0kpXdk4yJZAMETHY0xDdaJe4Ec1vS4ImReJZBrD8ZD`,
+    'Content-Type': 'application/json',
+  };
+
   try {
+    const url = 'https://graph.facebook.com/v22.0/576026228934824/messages';
     const response = await axios.post(url, payload, { headers });
     console.log("✅ WhatsApp API success:", response.data);
-  } catch (err) {
-    console.error("❌ WhatsApp API error:", err.response?.data || err.message);
+  } catch (error) {
+    console.error("❌ WhatsApp API error:", error.response?.data || error.message);
   }
 }
 
