@@ -11,8 +11,11 @@ const PORT = process.env.PORT || 3000;
 
 // ✅ PostgreSQL Connection (same as yours)
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || "postgresql://admin:your_password@your_host/trip_advisor_db",
-  ssl: { rejectUnauthorized: false }
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+  max: 10, // limit total clients in pool
+  idleTimeoutMillis: 10000, // close idle clients after 10s
+  connectionTimeoutMillis: 5000, // fail if not connected in 5s
 });
 
 // ✅ Middleware

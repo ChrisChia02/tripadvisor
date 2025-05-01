@@ -418,7 +418,7 @@ class _RegisterPageState extends State<RegisterPage> {
       Uri.parse("https://tripadvisor-hgg4.onrender.com/register"), // Change to your backend URL
       headers: {"Content-Type": "application/json"},
       body: jsonEncode({
-        "firebaseUserId": firebaseUserId, // Store Firebase UID in MySQL
+        "firebaseUserId": firebaseUserId, // Store Firebase UID in Database
         "email": email,
         "username": username,
         "gender": gender,
@@ -430,7 +430,7 @@ class _RegisterPageState extends State<RegisterPage> {
       showToast("Registration successful!");
       Navigator.pushReplacementNamed(context, "/login");
     } else {
-      showToast("MySQL error: ${response.body}");
+      showToast("Database error: ${response.body}");
     }
   } catch (e) {
     showToast("Error: ${e.toString()}");
