@@ -15,21 +15,9 @@ async function sendWhatsAppMessage(date) {
   const payload = {
   messaging_product: "whatsapp",
   to: "601133611355",
-  type: "template",
-  template: {
-    name: "trip_confirmation", // new name
-    language: { code: "en_US" },
-    components: [
-      {
-        type: "body",
-        parameters: [
-          {
-            type: "text",
-            text: "Thursday, May 1, 2025"
-          }
-        ]
-      }
-    ]
+  type: "text",
+  text: {
+    body: "This is a test message from my backend."
   }
 };
 
@@ -237,21 +225,6 @@ app.post("/api/plans", async (req, res) => {
 
 // 5️⃣ ================== BOOKINGS ==================
 // Create booking after PayPal success
-app.post("/api/bookings", async (req, res) => {
- const { user_id, plan_id, paypal_transaction_id, amount, place_name, place_lat, place_lng } = req.body;
-  try {
-    const result = await pool.query(
-  `INSERT INTO bookings (user_id, plan_id, paypal_transaction_id, amount, place_name, place_lat, place_lng) 
-   VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-  [user_id, plan_id, paypal_transaction_id, amount, place_name, place_lat, place_lng]
- );
-    res.status(201).json(result.rows[0]);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to create booking" });
-  }
-});
-
 app.get("/api/bookings", async (req, res) => {
   try {
     const result = await pool.query(
