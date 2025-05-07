@@ -230,7 +230,7 @@ app.get('/users/:userId', async (req, res) => {
     const reviewsResult = await pool.query(`
       SELECT r.review_text, r.rating, r.created_at, b.place_name
       FROM reviews r
-      JOIN booking b ON r.booking_id = b.booking_id
+      JOIN bookings b ON r.booking_id = b.booking_id
       WHERE r.user_id = $1
       ORDER BY r.created_at DESC
     `, [userId]);
