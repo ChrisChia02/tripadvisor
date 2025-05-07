@@ -241,15 +241,21 @@ app.get('/api/saved_places/:userId/:placeId', async (req, res) => {
 });
 
 // ⿣ ================== TRIPS ==================
-// Save a trip
 app.post('/api/trips', async (req, res) => {
   const { userId, name, itinerary, pictureType } = req.body;
   try {
+    // Ensure itinerary is an array
+    const validatedItinerary = Array.isArray(itinerary)
+      ? itinerary
+      : itinerary && itinerary.items
+        ? itinerary.items
+        : [];
+
     const result = await pool.query(
       `INSERT INTO trips (user_id, name, itinerary, picture_type, created_at)
        VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
        RETURNING *`,
-      [userId, name, itinerary, pictureType]
+      [userId, name, validatedItinerary, pictureType]
     );
     res.status(201).json(result.rows[0]);
   } catch (error) {

@@ -12,7 +12,8 @@ class AuthService {
   late final StreamController<String?> _simpleIdController; // Properly declared
 
   AuthService() {
-    _simpleIdController = StreamController<String?>.broadcast(); // Initialized in constructor
+    _simpleIdController =
+        StreamController<String?>.broadcast(); // Initialized in constructor
   }
 
   Stream<String?> get simpleIdStream => _simpleIdController.stream;
@@ -22,7 +23,9 @@ class AuthService {
       if (user != null) {
         try {
           final response = await http.get(
-            Uri.parse('https://tripadvisor-hgg4.onrender.com/users/${user.uid}'),
+            Uri.parse(
+              'https://tripadvisor-hgg4.onrender.com/users/${user.uid}',
+            ),
           );
 
           if (response.statusCode == 200) {
@@ -51,28 +54,30 @@ class AuthService {
   }
 
   Future<void> login(String email, String password) async {
-  try {
-    // 1. Authenticate with Firebase
-    final userCredential = await _auth.signInWithEmailAndPassword(
-      email: email,
-      password: password,
-    );
+    try {
+      // 1. Authenticate with Firebase
+      final userCredential = await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
 
-    // 2. Fetch simple_id from YOUR backend
-    final response = await http.get(
-      Uri.parse('https://tripadvisor-hgg4.onrender.com/users/${userCredential.user!.uid}'),
-    );
+      // 2. Fetch simple_id from YOUR backend
+      final response = await http.get(
+        Uri.parse(
+          'https://tripadvisor-hgg4.onrender.com/users/${userCredential.user!.uid}',
+        ),
+      );
 
-    if (response.statusCode == 200) {
-      final userData = jsonDecode(response.body);
-      await _storage.write(key: 'simple_id', value: userData['simple_id']);
-      _simpleIdController.add(userData['simple_id']); // Notify listeners
-    } else {
-      throw Exception('Failed to fetch simple_id');
+      if (response.statusCode == 200) {
+        final userData = jsonDecode(response.body);
+        await _storage.write(key: 'simple_id', value: userData['simple_id']);
+        _simpleIdController.add(userData['simple_id']); // Notify listeners
+      } else {
+        throw Exception('Failed to fetch simple_id');
+      }
+    } catch (e) {
+      debugPrint('Login error: $e');
+      rethrow;
     }
-  } catch (e) {
-    debugPrint('Login error: $e');
-    rethrow;
   }
-}
 }
