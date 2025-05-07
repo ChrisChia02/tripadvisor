@@ -130,10 +130,17 @@ app.post("/register", async (req, res) => {
 
 // ✅ Get User Information by ID
 app.get("/users/:id", async (req, res) => {
-  const userId = req.params.id; // Keep as string (not `parseInt`)
+  const userId = req.params.id;
 
   try {
-    const result = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
+    // Query user details along with reviews
+    const result = await pool.query(`
+      SELECT u.*, json_agg(r.*) AS reviews
+      FROM users u
+      LEFT JOIN reviews r ON r.user_id = u.id
+      WHERE u.id = $1
+      GROUP BY u.id
+    `, [userId]);
 
     if (result.rows.length === 0) {
       return res.json({
@@ -141,9 +148,11 @@ app.get("/users/:id", async (req, res) => {
         gender: "N/A",
         phone: "N/A",
         profile_picture: "/uploads/default_profile.png",
+        reviews: []  // Return an empty array if no reviews
       });
     }
 
+    // Return user data with reviews
     res.json(result.rows[0]);
   } catch (err) {
     console.error("❌ PostgreSQL Error:", err);
@@ -210,37 +219,6 @@ app.post('/reviews', async (req, res) => {
     res.status(201).send({ message: 'Review submitted successfully', review: result.rows[0] });
   } catch (error) {
     res.status(500).send({ message: 'Failed to submit review', error: error.message });
-  }
-});
-
-app.get('/users/:userId', async (req, res) => {
-  const { userId } = req.params;
-
-  try {
-    // Fetch user details
-    const userResult = await pool.query('SELECT * FROM users WHERE user_id = $1', [userId]);
-
-    if (userResult.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const user = userResult.rows[0];
-
-    // Fetch reviews with place name
-    const reviewsResult = await pool.query(`
-      SELECT r.review_text, r.rating, r.created_at, b.place_name
-      FROM reviews r
-      JOIN bookings b ON r.booking_id = b.id
-      WHERE r.user_id = $1
-      ORDER BY r.created_at DESC
-    `, [userId]);
-
-    user.reviews = reviewsResult.rows; // Attach reviews to user object
-
-    res.json(user);
-  } catch (error) {
-    console.error('Error fetching user or reviews:', error);
-    res.status(500).json({ error: 'Server error' });
   }
 });
 

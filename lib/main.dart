@@ -5936,14 +5936,17 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
     _userData = fetchUserData(widget.userId);
   }
 
-  Future<Map<String, dynamic>> fetchUserData(String userId) async {
-    final response = await http.get(Uri.parse("https://trip-advisor-woil.onrender.com/users/$userId"));
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception("Failed to load user data");
-    }
+Future<Map<String, dynamic>> fetchUserData(String userId) async {
+  final response = await http.get(Uri.parse("https://trip-advisor-woil.onrender.com/users/$userId"));
+  if (response.statusCode == 200) {
+    final data = jsonDecode(response.body);
+    print('Fetched user data: $data');  // Debug print
+    return data;
+  } else {
+    throw Exception("Failed to load user data");
   }
+}
+
 
   Future<void> _pickImage() async {
     final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
@@ -6119,8 +6122,7 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
                         Text("Reviews", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                         SizedBox(height: 10),
 
-                        // Display Reviews Dynamically
-                        if (userData["reviews"] != null && userData["reviews"].isNotEmpty)
+                        if (userData["reviews"].isNotEmpty)
                           ...userData["reviews"].map<Widget>((review) {
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -6167,7 +6169,7 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
                         ),
                       ],
                     ),
-                  ),
+                  )
                 ],
               ),
             ),
