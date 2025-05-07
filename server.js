@@ -197,14 +197,14 @@ app.put('/users/:userId', async (req, res) => {
 
 // ⿢ ================== REVIEW ==================
 app.post('/reviews', async (req, res) => {
-  const { userId, bookingId, rating, review_text } = req.body;
+  const { userId, bookingId, rating, review } = req.body;
 
   try {
     // Insert the review into the database
     const result = await pool.query(
       `INSERT INTO reviews (user_id, booking_id, rating, review_text)
        VALUES ($1, $2, $3, $4) RETURNING *`,
-      [userId, bookingId, rating, review_text]
+      [userId, bookingId, rating, review]
     );
 
     res.status(201).send({ message: 'Review submitted successfully', review: result.rows[0] });
