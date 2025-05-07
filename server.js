@@ -202,7 +202,7 @@ app.post('/reviews', async (req, res) => {
   try {
     // Insert the review into the database
     const result = await pool.query(
-      `INSERT INTO reviews (user_id, booking_id, rating, comment)
+      `INSERT INTO reviews (user_id, booking_id, rating, review_text)
        VALUES ($1, $2, $3, $4) RETURNING *`,
       [userId, bookingId, rating, comment]
     );
