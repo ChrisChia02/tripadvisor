@@ -197,7 +197,7 @@ app.put('/users/:userId', async (req, res) => {
 
 // ⿢ ================== REVIEW ==================
 app.post('/reviews', async (req, res) => {
-  const { userId, bookingId, rating, comment } = req.body;
+  const { userId, bookingId, rating, review_text } = req.body;
 
   try {
     // Insert the review into the database
