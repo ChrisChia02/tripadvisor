@@ -5968,7 +5968,7 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
     if (response.statusCode == 200) {
       showToast("Profile picture updated!");
       setState(() {
-        _userData = fetchUserData(widget.userId);
+        _userData = fetchUserData(widget.userId);  // Re-fetch user data
       });
     } else {
       showToast("Upload failed!");
@@ -6119,6 +6119,7 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
                         Text("Reviews", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                         SizedBox(height: 10),
 
+                        // Display Reviews Dynamically
                         if (userData["reviews"] != null && userData["reviews"].isNotEmpty)
                           ...userData["reviews"].map<Widget>((review) {
                             return Column(
@@ -6149,14 +6150,14 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
                             minimumSize: Size(double.infinity, 50),
                           ),
                           onPressed: () async {
-                            final shouldRefresh2 = await Navigator.push(
+                            final shouldRefresh = await Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (context) => WriteReviewPage(userId: widget.userId),
                               ),
                             );
 
-                            if (shouldRefresh2 == true) {
+                            if (shouldRefresh == true) {
                               setState(() {
                                 _userData = fetchUserData(widget.userId);
                               });

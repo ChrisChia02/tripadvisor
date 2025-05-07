@@ -226,7 +226,7 @@ app.get('/users/:userId', async (req, res) => {
 
     const user = userResult.rows[0];
 
-    // Fetch reviews joined with place name (if available)
+    // Fetch reviews with place name
     const reviewsResult = await pool.query(`
       SELECT r.review_text, r.rating, r.created_at, b.place_name
       FROM reviews r
