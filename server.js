@@ -179,7 +179,7 @@ app.put('/users/:userId', async (req, res) => {
 
   try {
     // Update the user profile in the database
-    const result = await db.query(
+    const result = await pool.query(
       `UPDATE users SET username = $1, gender = $2, phone = $3, biography = $4 WHERE id = $5 RETURNING *`,
       [username, gender, phone, biography, userId]
     );

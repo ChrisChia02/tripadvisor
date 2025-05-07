@@ -6181,6 +6181,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
     }),
   );
 
+  print("Response status: ${response.statusCode}");  // Log the status code
+  print("Response body: ${response.body}");  // Log the body
+
   if (response.statusCode == 200) {
     showToast("Profile updated!");
     Navigator.pop(context);
