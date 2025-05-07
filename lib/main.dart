@@ -23,6 +23,7 @@ import 'mongodb.dart';
 import 'package:intl/intl.dart';
 import 'postgresql_service.dart';
 import 'screens/trip_generator_screen.dart';
+import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 
 class Destination {
   final String name;
@@ -6294,6 +6295,7 @@ class _WriteReviewPageState extends State<WriteReviewPage> {
   bool _isLoading = true;
   String? _errorMessage;
   String? _selectedBookingId;
+  double _rating = 3.0; // Default rating
 
   @override
   void initState() {
@@ -6333,30 +6335,37 @@ class _WriteReviewPageState extends State<WriteReviewPage> {
   }
 
   Future<void> submitReview() async {
-    if (_selectedBookingId == null) {
-      showToast("Please select a booking first");
-      return;
-    }
-
-    final response = await http.post(
-      Uri.parse("https://trip-advisor-woil.onrender.com/reviews"),
-      body: {
-        "userId": widget.userId,
-        "bookingId": _selectedBookingId,
-        "review": _reviewText,
-      },
-    );
-
-      print("Response status: ${response.statusCode}");  // Log the status code
-      print("Response body: ${response.body}");  // Log the body
-
-    if (response.statusCode == 200) {
-      showToast("Review submitted!");
-      Navigator.pop(context, true);
-    } else {
-      showToast("Failed to submit review");
-    }
+  if (_selectedBookingId == null || int.tryParse(_selectedBookingId!) == null) {
+    showToast("Please select a valid booking");
+    return;
   }
+
+  final reviewData = {
+    "userId": widget.userId,
+    "bookingId": int.parse(_selectedBookingId!),  // convert safely
+    "review": _reviewText,
+    "rating": _rating,
+  };
+
+  print("Review Text: $_reviewText");
+
+  final response = await http.post(
+    Uri.parse("https://trip-advisor-woil.onrender.com/reviews"),
+    headers: {"Content-Type": "application/json"},
+    body: jsonEncode(reviewData),
+  );
+
+  print("Response status: ${response.statusCode}");
+  print("Response body: ${response.body}");
+
+  if (response.statusCode == 200) {
+    showToast("Review submitted!");
+    Navigator.pop(context, true);
+  } else {
+    showToast("Failed to submit review");
+  }
+}
+
 
   void showToast(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
@@ -6384,7 +6393,7 @@ class _WriteReviewPageState extends State<WriteReviewPage> {
                           hint: Text("Select a Booking"),
                           items: _bookings.map<DropdownMenuItem<String>>((booking) {
                             final placeName = booking['place_name'] ?? 'Unknown Place';
-                            final bookingId = booking['booking_id'].toString();
+                            final bookingId = booking['id'].toString();
                             return DropdownMenuItem<String>(
                               value: bookingId,
                               child: Text(placeName),
@@ -6393,6 +6402,23 @@ class _WriteReviewPageState extends State<WriteReviewPage> {
                           onChanged: (value) {
                             setState(() {
                               _selectedBookingId = value;
+                            });
+                          },
+                        ),
+                        SizedBox(height: 16),
+                        Text("Your Rating", style: TextStyle(fontSize: 16)),
+                        RatingBar.builder(
+                          initialRating: _rating,
+                          minRating: 1,
+                          direction: Axis.horizontal,
+                          allowHalfRating: true,
+                          itemCount: 5,
+                          itemSize: 32,
+                          itemPadding: EdgeInsets.symmetric(horizontal: 4.0),
+                          itemBuilder: (context, _) => Icon(Icons.star, color: Colors.amber),
+                          onRatingUpdate: (rating) {
+                            setState(() {
+                              _rating = rating;
                             });
                           },
                         ),
