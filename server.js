@@ -195,6 +195,44 @@ app.put('/users/:userId', async (req, res) => {
   }
 });
 
+// ⿢ ================== REVIEW ==================
+app.post('/reviews', async (req, res) => {
+  const { userId, bookingId, rating, comment } = req.body;
+
+  try {
+    // Insert the review into the database
+    const result = await db.query(
+      `INSERT INTO reviews (user_id, booking_id, rating, comment)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [userId, bookingId, rating, comment]
+    );
+
+    res.status(201).send({ message: 'Review submitted successfully', review: result.rows[0] });
+  } catch (error) {
+    res.status(500).send({ message: 'Failed to submit review', error: error.message });
+  }
+});
+
+app.get('/reviews/user/:userId', async (req, res) => {
+  const userId = req.params.userId;
+
+  try {
+    const result = await db.query(
+      `SELECT reviews.*, bookings.place_name
+       FROM reviews
+       JOIN bookings ON reviews.booking_id = bookings.id
+       WHERE reviews.user_id = $1
+       ORDER BY reviews.created_at DESC`,
+      [userId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error retrieving user reviews:', error);
+    res.status(500).json({ message: 'Failed to retrieve reviews' });
+  }
+});
+
 // ⿢ ================== SAVED PLACES ==================
 // Save a place
 app.post('/api/saved_places', async (req, res) => {

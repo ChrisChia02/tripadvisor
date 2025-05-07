@@ -5989,13 +5989,21 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
         actions: [
           IconButton(
             icon: Icon(Icons.edit),
-            onPressed: () {
-              Navigator.push(
+            onPressed: () async {
+              // Wait for result from EditProfilePage
+              final shouldRefresh = await Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => EditProfilePage(userId: widget.userId), // Pass userId to EditProfilePage
+                  builder: (context) => EditProfilePage(userId: widget.userId),
                 ),
               );
+
+              // If the profile was updated, refresh the data
+              if (shouldRefresh == true) {
+                setState(() {
+                  _userData = fetchUserData(widget.userId);  // Re-fetch user data
+                });
+              }
             },
           ),
         ],
@@ -6058,7 +6066,12 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
                   // Biography Section
                   Text("Biography", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   SizedBox(height: 10),
-                  Text("A passionate traveler exploring the world one trip at a time.", style: TextStyle(fontSize: 16)),
+                  Text(
+                    userData["biography"] != null && userData["biography"].isNotEmpty
+                        ? userData["biography"]
+                        : "No biography provided.",
+                    style: TextStyle(fontSize: 16),
+                  ),
 
                   SizedBox(height: 40),
 
@@ -6147,6 +6160,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
   String _phone = "";
   String _biography = "";
 
+  // Gender options for dropdown
+  final List<String> _genderOptions = ['Male', 'Female', 'Other'];
+
   @override
   void initState() {
     super.initState();
@@ -6160,7 +6176,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       var data = jsonDecode(response.body);
       setState(() {
         _username = data["username"];
-        _gender = data["gender"];
+        _gender = data["gender"] ?? "";  // Handle null gender value
         _phone = data["phone"];
         _biography = data["biography"] ?? "";
       });
@@ -6186,7 +6202,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   if (response.statusCode == 200) {
     showToast("Profile updated!");
-    Navigator.pop(context);
+    Navigator.pop(context, true);
   } else {
     showToast("Failed to update profile");
   }
@@ -6214,10 +6230,22 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 decoration: InputDecoration(labelText: 'Username'),
                 onChanged: (value) => _username = value,
               ),
-              TextFormField(
-                initialValue: _gender,
+              // Gender dropdown
+              DropdownButtonFormField<String>(
+                value: _gender.isNotEmpty && _genderOptions.contains(_gender) ? _gender : null, // Ensure the value is valid
                 decoration: InputDecoration(labelText: 'Gender'),
-                onChanged: (value) => _gender = value,
+                items: _genderOptions.map((String gender) {
+                  return DropdownMenuItem<String>(
+                    value: gender,
+                    child: Text(gender),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _gender = value!;
+                  });
+                },
+                validator: (value) => value == null ? 'Please select a gender' : null,
               ),
               TextFormField(
                 initialValue: _phone,
