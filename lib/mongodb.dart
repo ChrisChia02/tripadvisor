@@ -7,7 +7,7 @@ class MongoDatabase {
 
   static Future<void> connect() async {
     _db = await Db.create(MONGO_URL);
-    await _db.open();
+    //await _db.open();
     print("Connected to MongoDB");
   }
 

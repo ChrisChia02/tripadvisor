@@ -170,6 +170,31 @@ app.post("/uploadProfilePic/:id", upload.single("profilePic"), async (req, res) 
   }
 });
 
+// ⿢ ================== PROFILE ==================
+app.put('/users/:userId', async (req, res) => {
+  const { userId } = req.params;
+  const { username, gender, phone, biography } = req.body;
+
+  console.log("Received data:", req.body);  // Log the request body
+
+  try {
+    // Update the user profile in the database
+    const result = await db.query(
+      `UPDATE users SET username = $1, gender = $2, phone = $3, biography = $4 WHERE id = $5 RETURNING *`,
+      [username, gender, phone, biography, userId]
+    );
+
+    if (result.rows.length > 0) {
+      res.status(200).send({ message: "Profile updated successfully" });
+    } else {
+      res.status(404).send({ message: "User not found" });
+    }
+  } catch (error) {
+    console.error("Error updating profile:", error);  // Log the error
+    res.status(500).send({ message: "Failed to update profile", error: error.message });
+  }
+});
+
 // ⿢ ================== SAVED PLACES ==================
 // Save a place
 app.post('/api/saved_places', async (req, res) => {

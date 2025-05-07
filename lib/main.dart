@@ -5918,36 +5918,64 @@ class BookingCard extends StatelessWidget {
 }
 
 class ProfileDetailsPage extends StatefulWidget {
-  final String? userId;
-  ProfileDetailsPage({this.userId});
+  final String userId;
+  ProfileDetailsPage({required this.userId});
 
   @override
   _ProfileDetailsPageState createState() => _ProfileDetailsPageState();
 }
 
 class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
-  late Future<Map<String, dynamic>>? _userData;
+  late Future<Map<String, dynamic>> _userData;
   File? _imageFile;
 
   @override
   void initState() {
     super.initState();
-    if (widget.userId != null) {
-      _userData = fetchUserData(widget.userId!);
-    } else {
-      _userData = null; // User skipped login
-    }
+    _userData = fetchUserData(widget.userId);
   }
 
   Future<Map<String, dynamic>> fetchUserData(String userId) async {
-    final response = await http.get(
-      Uri.parse("https://trip-advisor-woil.onrender.com/users/$userId"),
-    );
+    final response = await http.get(Uri.parse("https://trip-advisor-woil.onrender.com/users/$userId"));
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
       throw Exception("Failed to load user data");
     }
+  }
+
+  Future<void> _pickImage() async {
+    final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      setState(() {
+        _imageFile = File(pickedFile.path);
+      });
+      await _uploadProfilePicture();
+    }
+  }
+
+  Future<void> _uploadProfilePicture() async {
+    if (_imageFile == null) return;
+
+    var request = http.MultipartRequest(
+      "POST",
+      Uri.parse("https://trip-advisor-woil.onrender.com/uploadProfilePic/${widget.userId}")
+    );
+    request.files.add(await http.MultipartFile.fromPath("profilePic", _imageFile!.path));
+
+    var response = await request.send();
+    if (response.statusCode == 200) {
+      showToast("Profile picture updated!");
+      setState(() {
+        _userData = fetchUserData(widget.userId);
+      });
+    } else {
+      showToast("Upload failed!");
+    }
+  }
+
+  void showToast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -5958,191 +5986,389 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
         centerTitle: true,
         toolbarHeight: 80,
         backgroundColor: Color(0xFF628EFF),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.edit),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => EditProfilePage(userId: widget.userId), // Pass userId to EditProfilePage
+                ),
+              );
+            },
+          ),
+        ],
       ),
-      body:
-          widget.userId == null
-              ? _buildGuestView(context)
-              : FutureBuilder<Map<String, dynamic>>(
-                future: _userData,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return Center(child: CircularProgressIndicator());
-                  }
+      body: FutureBuilder<Map<String, dynamic>>(
+        future: _userData,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Center(child: CircularProgressIndicator());
+          } else if (snapshot.hasError) {
+            return Center(child: Text("Error loading data"));
+          } else if (!snapshot.hasData) {
+            return Center(child: Text("No user data found"));
+          }
 
-                  if (snapshot.hasError ||
-                      !snapshot.hasData ||
-                      snapshot.data!.isEmpty) {
-                    return Center(
-                      child: Text(
-                        "No user data found. Please sign in or try again later.",
-                        style: TextStyle(color: Colors.redAccent),
+          final userData = snapshot.data!;  // This is where the user data is available
+
+          String profileImageUrl = userData["profile_picture"] != null
+              ? "https://trip-advisor-woil.onrender.com${userData["profile_picture"]}"
+              : "assets/profile_placeholder.png";
+
+          return SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Profile Header Row (Profile Pic + User Details)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // Profile Picture (Tap to change)
+                      GestureDetector(
+                        onTap: _pickImage,
+                        child: CircleAvatar(
+                          radius: 45,
+                          backgroundImage: profileImageUrl.startsWith("http")
+                              ? NetworkImage(profileImageUrl)
+                              : AssetImage(profileImageUrl) as ImageProvider,
+                        ),
                       ),
-                    );
-                  }
+                      SizedBox(width: 15),
 
-                  final userData = snapshot.data!;
-                  String profileImageUrl =
-                      userData["profile_picture"] != null
-                          ? "https://trip-advisor-woil.onrender.com${userData["profile_picture"]}"
-                          : "assets/profile_placeholder.png";
+                      // User Details
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(userData["username"], style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                          SizedBox(height: 5),
+                          Text("Gender: ${userData["gender"]}", style: TextStyle(fontSize: 16, color: Colors.grey)),
+                          SizedBox(height: 5),
+                          Text("Phone: ${userData["phone"]}", style: TextStyle(fontSize: 16, color: Colors.grey)),
+                        ],
+                      ),
+                    ],
+                  ),
 
-                  return SingleChildScrollView(
+                  SizedBox(height: 30),
+
+                  // Biography Section
+                  Text("Biography", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  SizedBox(height: 10),
+                  Text("A passionate traveler exploring the world one trip at a time.", style: TextStyle(fontSize: 16)),
+
+                  SizedBox(height: 40),
+
+                  // Photos Section (With Card for Emphasis)
+                  Card(
+                    color: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    elevation: 3,
                     child: Padding(
-                      padding: const EdgeInsets.all(20.0),
+                      padding: EdgeInsets.all(15),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              GestureDetector(
-                                onTap: () => _pickImage(),
-                                child: CircleAvatar(
-                                  radius: 45,
-                                  backgroundImage:
-                                      profileImageUrl.startsWith("http")
-                                          ? NetworkImage(profileImageUrl)
-                                          : AssetImage(profileImageUrl)
-                                              as ImageProvider,
-                                ),
-                              ),
-                              SizedBox(width: 15),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    userData["username"],
-                                    style: TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  SizedBox(height: 5),
-                                  Text(
-                                    "Gender: ${userData["gender"]}",
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                  SizedBox(height: 5),
-                                  Text(
-                                    "Phone: ${userData["phone"]}",
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: 30),
-                          _buildProfileOption(
-                            Icons.settings,
-                            "Preferences",
-                            context,
-                            PreferencesPage(),
-                          ),
-                          _buildProfileOption(
-                            Icons.support,
-                            "Support",
-                            context,
-                            SupportPage(),
+                          Text("Photos", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          SizedBox(height: 10),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Color(0xFF5856D6),
+                              minimumSize: Size(double.infinity, 50),
+                            ),
+                            onPressed: () {
+                              // TODO: Implement photo upload function
+                            },
+                            child: Text("Upload a photo", style: TextStyle(fontSize: 16, color: Colors.white)),
                           ),
                         ],
                       ),
                     ),
-                  );
-                },
+                  ),
+
+                  SizedBox(height: 30),
+
+                  // Reviews Section
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.grey[300]!),
+                    ),
+                    padding: EdgeInsets.all(15),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("Reviews", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        SizedBox(height: 10),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Color(0xFF5856D6),
+                            minimumSize: Size(double.infinity, 50),
+                          ),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => WriteReviewPage(userId: widget.userId),
+                              ),
+                            );
+                          },
+                          child: Text("Write a review", style: TextStyle(fontSize: 16, color: Colors.white)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
+            ),
+          );
+        },
+      ),
     );
   }
+}
 
-  // --- Guest View ---
-  Widget _buildGuestView(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.account_circle, size: 100, color: Colors.grey),
-            SizedBox(height: 10),
-            Text(
-              "Welcome, Guest!",
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: 10),
-            Text(
-              "Sign in to unlock travel recommendations, share reviews, and organize trip ideas.",
-              style: TextStyle(fontSize: 16, color: Colors.grey),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: 20),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Color(0xFF5856D6),
+class EditProfilePage extends StatefulWidget {
+  final String userId;
+  EditProfilePage({required this.userId});
+
+  @override
+  _EditProfilePageState createState() => _EditProfilePageState();
+}
+
+class _EditProfilePageState extends State<EditProfilePage> {
+  final _formKey = GlobalKey<FormState>();
+  String _username = "";
+  String _gender = "";
+  String _phone = "";
+  String _biography = "";
+
+  @override
+  void initState() {
+    super.initState();
+    // Fetch current user data to populate the fields
+    fetchUserData(widget.userId);
+  }
+
+  Future<void> fetchUserData(String userId) async {
+    final response = await http.get(Uri.parse("https://trip-advisor-woil.onrender.com/users/$userId"));
+    if (response.statusCode == 200) {
+      var data = jsonDecode(response.body);
+      setState(() {
+        _username = data["username"];
+        _gender = data["gender"];
+        _phone = data["phone"];
+        _biography = data["biography"] ?? "";
+      });
+    } else {
+      showToast("Failed to load user data");
+    }
+  }
+
+  Future<void> saveProfile() async {
+  final response = await http.put(
+    Uri.parse("https://trip-advisor-woil.onrender.com/users/${widget.userId}"),
+    headers: {"Content-Type": "application/json"},
+    body: jsonEncode({
+      "username": _username,
+      "gender": _gender,
+      "phone": _phone,
+      "biography": _biography,
+    }),
+  );
+
+  if (response.statusCode == 200) {
+    showToast("Profile updated!");
+    Navigator.pop(context);
+  } else {
+    showToast("Failed to update profile");
+  }
+}
+
+  void showToast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("Edit Profile"),
+        backgroundColor: Color(0xFF628EFF),
+      ),
+      body: Padding(
+        padding: EdgeInsets.all(16),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              TextFormField(
+                initialValue: _username,
+                decoration: InputDecoration(labelText: 'Username'),
+                onChanged: (value) => _username = value,
               ),
-              onPressed: () {
-                Navigator.pushReplacementNamed(context, "/login");
-              },
-              child: Text("Sign In", style: TextStyle(color: Colors.white)),
-            ),
-            SizedBox(height: 30),
-            _buildProfileOption(
-              Icons.settings,
-              "Preferences",
-              context,
-              PreferencesPage(),
-            ),
-            _buildProfileOption(
-              Icons.support,
-              "Support",
-              context,
-              SupportPage(),
-            ),
-          ],
+              TextFormField(
+                initialValue: _gender,
+                decoration: InputDecoration(labelText: 'Gender'),
+                onChanged: (value) => _gender = value,
+              ),
+              TextFormField(
+                initialValue: _phone,
+                decoration: InputDecoration(labelText: 'Phone'),
+                onChanged: (value) => _phone = value,
+              ),
+              TextFormField(
+                initialValue: _biography,
+                decoration: InputDecoration(labelText: 'Biography'),
+                onChanged: (value) => _biography = value,  // Update biography
+                maxLines: 3,  // Allow multiple lines for biography
+              ),
+              SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: saveProfile,
+                child: Text("Save Changes"),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
 
-  // --- Pick Profile Image (Disabled for Guests) ---
-  Future<void> _pickImage() async {
-    if (widget.userId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Sign in to change profile picture.")),
+class WriteReviewPage extends StatefulWidget {
+  final String userId;
+  WriteReviewPage({required this.userId});
+
+  @override
+  _WriteReviewPageState createState() => _WriteReviewPageState();
+}
+
+class _WriteReviewPageState extends State<WriteReviewPage> {
+  final _formKey = GlobalKey<FormState>();
+  String _reviewText = "";
+  List<dynamic> _bookings = [];
+  bool _isLoading = true;
+  String? _errorMessage;
+  String? _selectedBookingId;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchBookings();
+  }
+
+  Future<void> _fetchBookings() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = "Please sign in to write a review.";
+        });
+        return;
+      }
+
+      final response = await http.get(
+        Uri.parse("https://trip-advisor-woil.onrender.com/api/bookings?user_id=${user.uid}"),
       );
-      return;
-    }
 
-    final pickedFile = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-    );
-    if (pickedFile != null) {
+      if (response.statusCode == 200) {
+        setState(() {
+          _bookings = jsonDecode(response.body);
+          _isLoading = false;
+        });
+      } else {
+        throw Exception("No bookings found");
+      }
+    } catch (e) {
       setState(() {
-        _imageFile = File(pickedFile.path);
+        _isLoading = false;
+        _errorMessage = e.toString().replaceAll("Exception: ", "");
       });
-      // Upload function can be implemented here
     }
   }
 
-  // --- Profile Options Row ---
-  Widget _buildProfileOption(
-    IconData icon,
-    String title,
-    BuildContext context,
-    Widget page,
-  ) {
-    return ListTile(
-      leading: Icon(icon, color: Colors.black),
-      title: Text(title, style: TextStyle(fontSize: 18)),
-      trailing: Icon(Icons.arrow_forward_ios, size: 18, color: Colors.black54),
-      onTap: () {
-        Navigator.push(context, MaterialPageRoute(builder: (context) => page));
+  Future<void> submitReview() async {
+    if (_selectedBookingId == null) {
+      showToast("Please select a booking first");
+      return;
+    }
+
+    final response = await http.post(
+      Uri.parse("https://trip-advisor-woil.onrender.com/reviews"),
+      body: {
+        "userId": widget.userId,
+        "bookingId": _selectedBookingId,
+        "review": _reviewText,
       },
+    );
+
+    if (response.statusCode == 200) {
+      showToast("Review submitted!");
+      Navigator.pop(context);
+    } else {
+      showToast("Failed to submit review");
+    }
+  }
+
+  void showToast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("Write a Review"),
+        backgroundColor: Color(0xFF628EFF),
+      ),
+      body: Padding(
+        padding: EdgeInsets.all(16),
+        child: _isLoading
+            ? Center(child: CircularProgressIndicator())
+            : _errorMessage != null
+                ? Center(child: Text(_errorMessage!))
+                : Form(
+                    key: _formKey,
+                    child: Column(
+                      children: [
+                        DropdownButtonFormField<String>(
+                          value: _selectedBookingId,
+                          hint: Text("Select a Booking"),
+                          items: _bookings.map<DropdownMenuItem<String>>((booking) {
+                            final placeName = booking['place_name'] ?? 'Unknown Place';
+                            final bookingId = booking['booking_id'].toString();
+                            return DropdownMenuItem<String>(
+                              value: bookingId,
+                              child: Text(placeName),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedBookingId = value;
+                            });
+                          },
+                        ),
+                        SizedBox(height: 16),
+                        TextFormField(
+                          decoration: InputDecoration(labelText: 'Your Review'),
+                          onChanged: (value) => _reviewText = value,
+                          maxLines: 5,
+                        ),
+                        SizedBox(height: 20),
+                        ElevatedButton(
+                          onPressed: submitReview,
+                          child: Text("Submit Review"),
+                        ),
+                      ],
+                    ),
+                  ),
+      ),
     );
   }
 }
@@ -6158,13 +6384,81 @@ class NotificationsPage extends StatelessWidget {
         backgroundColor: Color(0xFF628EFF),
       ),
       body: Center(
-        child: Text("Notifications Page", style: TextStyle(fontSize: 20)),
+        child: Text("No notification", style: TextStyle(fontSize: 20)),
       ),
     );
   }
 }
 
-class PreferencesPage extends StatelessWidget {
+class PreferencesPage extends StatefulWidget {
+  @override
+  _PreferencesPageState createState() => _PreferencesPageState();
+}
+
+class _PreferencesPageState extends State<PreferencesPage> {
+  bool _notificationsEnabled = false;
+  bool _locationEnabled = false;
+
+  void _toggleSetting(String title, bool currentValue, Function(bool) onChanged) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('$title Settings'),
+          content: Text('Turn ${title.toLowerCase()} ${currentValue ? 'off' : 'on'}?'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // Close dialog
+              },
+              child: Text("Cancel"),
+            ),
+            TextButton(
+              onPressed: () {
+                onChanged(!currentValue);
+                Navigator.pop(context);
+              },
+              child: Text(currentValue ? "Turn Off" : "Turn On"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildPreferenceOption(IconData icon, String title) {
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(title),
+      trailing: (title == "Notification")
+          ? Switch(
+              value: _notificationsEnabled,
+              onChanged: (value) {
+                setState(() => _notificationsEnabled = value);
+              },
+            )
+          : (title == "Location")
+              ? Switch(
+                  value: _locationEnabled,
+                  onChanged: (value) {
+                    setState(() => _locationEnabled = value);
+                  },
+                )
+              : Icon(Icons.arrow_forward_ios),
+      onTap: () {
+        if (title == "Notification") {
+          _toggleSetting("Notification", _notificationsEnabled, (value) {
+            setState(() => _notificationsEnabled = value);
+          });
+        } else if (title == "Location") {
+          _toggleSetting("Location", _locationEnabled, (value) {
+            setState(() => _locationEnabled = value);
+          });
+        }
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -6176,26 +6470,11 @@ class PreferencesPage extends StatelessWidget {
       ),
       body: ListView(
         children: [
-          _buildPreferenceOption(Icons.person, "Account Info"),
-          _buildPreferenceOption(Icons.language, "Language & Currency"),
-          _buildPreferenceOption(Icons.attach_money, "Budget"),
-          _buildPreferenceOption(Icons.payment, "Payment Preference"),
           _buildPreferenceOption(Icons.notifications, "Notification"),
           _buildPreferenceOption(Icons.location_on, "Location"),
           _buildPreferenceOption(Icons.privacy_tip, "Privacy"),
         ],
       ),
-    );
-  }
-
-  Widget _buildPreferenceOption(IconData icon, String title) {
-    return ListTile(
-      leading: Icon(icon, color: Colors.black),
-      title: Text(title, style: TextStyle(fontSize: 18)),
-      trailing: Icon(Icons.arrow_forward_ios, size: 18, color: Colors.black54),
-      onTap: () {
-        // TODO: Navigate to respective pages
-      },
     );
   }
 }
@@ -6212,22 +6491,117 @@ class SupportPage extends StatelessWidget {
       ),
       body: ListView(
         children: [
-          _buildPreferenceOption(Icons.person, "Help center"),
-          _buildPreferenceOption(Icons.language, "Contact Us"),
-          _buildPreferenceOption(Icons.attach_money, "Term of use"),
+          _buildSupportOption(context, Icons.help_outline, "Help center"),
+          _buildSupportOption(context, Icons.email, "Contact Us"),
+          _buildSupportOption(context, Icons.description, "Term of use"),
         ],
       ),
     );
   }
 
-  Widget _buildPreferenceOption(IconData icon, String title) {
+  Widget _buildSupportOption(BuildContext context, IconData icon, String title) {
     return ListTile(
       leading: Icon(icon, color: Colors.black),
       title: Text(title, style: TextStyle(fontSize: 18)),
       trailing: Icon(Icons.arrow_forward_ios, size: 18, color: Colors.black54),
       onTap: () {
-        // TODO: Navigate to respective pages
+        if (title == "Help center") {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => HelpCenterPage()));
+        } else if (title == "Contact Us") {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => ContactUsPage()));
+        } else if (title == "Term of use") {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => TermsPage()));
+        }
       },
+    );
+  }
+}
+
+class HelpCenterPage extends StatelessWidget {
+  final List<Map<String, String>> faqs = [
+    {"question": "How do I reset my password?", "answer": "In the login page, click 'Forgot password'."},
+    {"question": "How do I delete a trip?", "answer": "In 'Trip' page, you can always edit your trip by adding or deleting them by clicking the 'edit' button."},
+    {"question": "Can I edit my booking?", "answer": "No. Once your booking is confirmed, you may not edit your booking. Any problem faced you may contact us via our support team email. Visit Profile > Help Center > Contact Us."},
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text("Help Center"), backgroundColor: Color(0xFF628EFF)),
+      body: ListView.builder(
+        itemCount: faqs.length,
+        itemBuilder: (context, index) {
+          return ExpansionTile(
+            title: Text(faqs[index]["question"]!),
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(faqs[index]["answer"]!),
+              )
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class ContactUsPage extends StatelessWidget {
+  final String email = "tripadvisor-supportteam@gmail.com";
+
+  void _launchEmail() async {
+    final Uri emailLaunchUri = Uri(
+      scheme: 'mailto',
+      path: 'tripadvisor-supportteam@gmail.com',
+      query: 'subject=App Support&body=Hello, I need help with...',
+    );
+    if (await canLaunchUrl(emailLaunchUri)) {
+      await launchUrl(emailLaunchUri);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text("Contact Us"), backgroundColor: Color(0xFF628EFF)),
+      body: Center(
+        child: TextButton.icon(
+          onPressed: _launchEmail,
+          icon: Icon(Icons.email, color: Colors.blue),
+          label: Text(
+            email,
+            style: TextStyle(fontSize: 18, color: Colors.blue, decoration: TextDecoration.underline),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class TermsPage extends StatelessWidget {
+  final String terms = '''
+Welcome to our app. By using this app, you agree to the following terms and conditions:
+
+1. You must be 18 years or older to use this service.
+2. All trip bookings are subject to availability and pricing at the time of checkout.
+3. Users are responsible for keeping their account credentials secure.
+4. We are not liable for any losses, damages, or delays incurred through third-party services.
+5. Use of our AI-generated recommendations is at your own discretion.
+6. You agree not to misuse, duplicate, or reverse-engineer any part of the app.
+
+Your continued use of the app indicates your agreement to these terms. We may update these terms at any time without notice. Check this page regularly to stay informed.
+  ''';
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text("Terms of Use"), backgroundColor: Color(0xFF628EFF)),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: SingleChildScrollView(
+          child: Text(terms, style: TextStyle(fontSize: 16, height: 1.5)),
+        ),
+      ),
     );
   }
 }
