@@ -6122,13 +6122,21 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
                             backgroundColor: Color(0xFF5856D6),
                             minimumSize: Size(double.infinity, 50),
                           ),
-                          onPressed: () {
-                            Navigator.push(
+                          onPressed: () async {
+                            // Wait for result from Write Review Page
+                            final shouldRefresh2 = await Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (context) => WriteReviewPage(userId: widget.userId),
                               ),
                             );
+
+                            // If the profile was updated, refresh the data
+                            if (shouldRefresh2 == true) {
+                              setState(() {
+                                _userData = fetchUserData(widget.userId);  // Re-fetch user data
+                              });
+                            }
                           },
                           child: Text("Write a review", style: TextStyle(fontSize: 16, color: Colors.white)),
                         ),
@@ -6339,9 +6347,12 @@ class _WriteReviewPageState extends State<WriteReviewPage> {
       },
     );
 
+      print("Response status: ${response.statusCode}");  // Log the status code
+      print("Response body: ${response.body}");  // Log the body
+
     if (response.statusCode == 200) {
       showToast("Review submitted!");
-      Navigator.pop(context);
+      Navigator.pop(context, true);
     } else {
       showToast("Failed to submit review");
     }

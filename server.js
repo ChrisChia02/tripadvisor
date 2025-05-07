@@ -201,7 +201,7 @@ app.post('/reviews', async (req, res) => {
 
   try {
     // Insert the review into the database
-    const result = await db.query(
+    const result = await pool.query(
       `INSERT INTO reviews (user_id, booking_id, rating, comment)
        VALUES ($1, $2, $3, $4) RETURNING *`,
       [userId, bookingId, rating, comment]
@@ -217,7 +217,7 @@ app.get('/reviews/user/:userId', async (req, res) => {
   const userId = req.params.userId;
 
   try {
-    const result = await db.query(
+    const result = await pool.query(
       `SELECT reviews.*, bookings.place_name
        FROM reviews
        JOIN bookings ON reviews.booking_id = bookings.id
