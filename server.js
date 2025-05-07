@@ -135,9 +135,17 @@ app.get("/users/:id", async (req, res) => {
   try {
     // Query user details along with reviews
     const result = await pool.query(`
-      SELECT u.*, json_agg(r.*) AS reviews
+      SELECT u.*,
+        COALESCE(json_agg(
+          json_build_object(
+            'place_name', b.place_name,
+            'review_text', r.review_text,
+            'rating', r.rating
+          )
+        ) FILTER (WHERE r.id IS NOT NULL), '[]') AS reviews
       FROM users u
       LEFT JOIN reviews r ON r.user_id = u.id
+      LEFT JOIN bookings b ON r.booking_id = b.id
       WHERE u.id = $1
       GROUP BY u.id
     `, [userId]);
