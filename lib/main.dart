@@ -6118,13 +6118,37 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
                       children: [
                         Text("Reviews", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                         SizedBox(height: 10),
+
+                        if (userData["reviews"] != null && userData["reviews"].isNotEmpty)
+                          ...userData["reviews"].map<Widget>((review) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  review["place_name"] ?? "Unnamed Place",
+                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                ),
+                                SizedBox(height: 5),
+                                Text(
+                                  review["review_text"] ?? "No review text.",
+                                  style: TextStyle(fontSize: 15),
+                                ),
+                                SizedBox(height: 10),
+                                Divider(),
+                                SizedBox(height: 10),
+                              ],
+                            );
+                          }).toList()
+                        else
+                          Text("No reviews written yet.", style: TextStyle(fontSize: 16)),
+
+                        SizedBox(height: 10),
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Color(0xFF5856D6),
                             minimumSize: Size(double.infinity, 50),
                           ),
                           onPressed: () async {
-                            // Wait for result from Write Review Page
                             final shouldRefresh2 = await Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -6132,10 +6156,9 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
                               ),
                             );
 
-                            // If the profile was updated, refresh the data
                             if (shouldRefresh2 == true) {
                               setState(() {
-                                _userData = fetchUserData(widget.userId);  // Re-fetch user data
+                                _userData = fetchUserData(widget.userId);
                               });
                             }
                           },
@@ -6358,7 +6381,7 @@ class _WriteReviewPageState extends State<WriteReviewPage> {
   print("Response status: ${response.statusCode}");
   print("Response body: ${response.body}");
 
-  if (response.statusCode == 200) {
+  if (response.statusCode == 201) {
     showToast("Review submitted!");
     Navigator.pop(context, true);
   } else {

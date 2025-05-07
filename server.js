@@ -213,23 +213,34 @@ app.post('/reviews', async (req, res) => {
   }
 });
 
-app.get('/reviews/user/:userId', async (req, res) => {
-  const userId = req.params.userId;
+app.get('/users/:userId', async (req, res) => {
+  const { userId } = req.params;
 
   try {
-    const result = await pool.query(
-      `SELECT reviews.*, bookings.place_name
-       FROM reviews
-       JOIN bookings ON reviews.booking_id = bookings.id
-       WHERE reviews.user_id = $1
-       ORDER BY reviews.created_at DESC`,
-      [userId]
-    );
+    // Fetch user details
+    const userResult = await pool.query('SELECT * FROM users WHERE user_id = $1', [userId]);
 
-    res.json(result.rows);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const user = userResult.rows[0];
+
+    // Fetch reviews joined with place name (if available)
+    const reviewsResult = await pool.query(`
+      SELECT r.review_text, r.rating, r.created_at, b.place_name
+      FROM reviews r
+      JOIN booking b ON r.booking_id = b.booking_id
+      WHERE r.user_id = $1
+      ORDER BY r.created_at DESC
+    `, [userId]);
+
+    user.reviews = reviewsResult.rows; // Attach reviews to user object
+
+    res.json(user);
   } catch (error) {
-    console.error('Error retrieving user reviews:', error);
-    res.status(500).json({ message: 'Failed to retrieve reviews' });
+    console.error('Error fetching user or reviews:', error);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
